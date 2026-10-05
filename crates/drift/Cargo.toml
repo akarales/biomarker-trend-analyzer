@@ -1,0 +1,9 @@
+[package]
+name = "biomarker-drift"
+description = "Personal-baseline drift detection: robust z-scores, EWMA, Theil-Sen trend"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+serde.workspace = true

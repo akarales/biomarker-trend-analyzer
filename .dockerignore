@@ -1,0 +1,11 @@
+.git
+node_modules
+dist
+target
+frontend/node_modules
+frontend/dist
+.env
+docs
+*.md
+!README.md
+!AGENTS.md

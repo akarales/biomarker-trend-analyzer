@@ -1,0 +1,23 @@
+[package]
+name = "biomarker-api"
+description = "Biomarker Trend Analyzer API (axum) — personal baselines, drift detection"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+biomarker-drift = { path = "../drift" }
+biomarker-ingest = { path = "../ingest" }
+axum.workspace = true
+tokio.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+tower-http.workspace = true
+chrono.workspace = true
+sqlx.workspace = true
+
+[dev-dependencies]
+tower.workspace = true
