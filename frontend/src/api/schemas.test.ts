@@ -19,10 +19,16 @@ describe('response schemas', () => {
     ).toBe(true);
   });
 
-  it('accept null detector outputs (short series)', () => {
+  it('accept null detector outputs (short series, unknown analyte)', () => {
     const s = summary('alice');
-    s.reports[0] = { ...s.reports[0], latest_z: null, trend: null, slope_per_day: null };
+    s.reports[0] = { ...s.reports[0], analyte: null, baseline: null, trend: null, rcv: null, latest: null, population: null };
     expect(PatientSummarySchema.safeParse(s).success).toBe(true);
+  });
+
+  it('reject an unknown rule or severity in a signal', () => {
+    const s = series('alice', 'HBA1C');
+    const bad = { ...s, report: { ...s.report, signals: [{ ...s.report.signals[0], rule: 'zscore' }] } };
+    expect(BiomarkerSeriesSchema.safeParse(bad).success).toBe(false);
   });
 
   it('reject an unknown status or a missing field', () => {

@@ -20,8 +20,16 @@ test('browse drift cards and trends', async ({ page }) => {
     await expect(page.getByRole('button', { name: new RegExp(`^${code}`) })).toBeVisible();
   }
 
-  await page.getByRole('button', { name: /^HBA1C/ }).click();
+  // alice's HbA1c step 5.6 → 7.0 %: alert, explained by the prRI + ADA threshold
+  const hba1c = page.getByRole('button', { name: /^HBA1C/ });
+  await expect(hba1c).toContainText('alert · Personal reference interval');
+  await hba1c.click();
   await expect(page.getByRole('heading', { name: 'HBA1C (%) · 48 readings' })).toBeVisible();
+  const signals = page.getByRole('region', { name: 'Signals' });
+  await expect(signals).toContainText("above this patient's personal reference interval 5.38–5.82 %");
+  await expect(signals).toContainText('diabetes range (ADA ≥ 6.5 %)');
+  await expect(signals).toContainText('Sustained shift: since 2026-09-15');
+  await expect(signals).toContainText('clinician review required');
 
   // switching patient with a card selected clears the chart (v1 showed the
   // new patient's series for the old card without a selection)

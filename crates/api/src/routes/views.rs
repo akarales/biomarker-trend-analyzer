@@ -25,13 +25,17 @@ pub struct PatientsView {
 #[derive(Serialize)]
 pub struct SummaryView {
     pub patient_id: String,
+    /// requested as-of (epoch seconds); null = each series' latest result
+    pub as_of: Option<i64>,
     pub window_days: i64,
     pub reports: Vec<DriftReport>,
 }
 
+/// A stored observation as recorded (original unit; the report's `points`
+/// hold the normalised values).
 #[derive(Serialize)]
 pub struct ObservationView {
-    /// `YYYY-MM-DD HH:MM:SS` (naive UTC), as in v1.
+    /// RFC 3339, UTC (`2026-01-06T00:00:00Z`) — unambiguous in any browser
     pub taken_at: String,
     pub value: f64,
     pub unit: String,
@@ -41,7 +45,10 @@ pub struct ObservationView {
 impl From<&Observation> for ObservationView {
     fn from(o: &Observation) -> Self {
         Self {
-            taken_at: o.taken_at.to_string(),
+            taken_at: o
+                .taken_at
+                .and_utc()
+                .to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
             value: o.value,
             unit: o.unit.clone(),
             source: o.source.clone(),

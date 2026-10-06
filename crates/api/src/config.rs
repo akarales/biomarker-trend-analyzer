@@ -14,7 +14,7 @@ pub struct Config {
     /// Demo data CSV path (used when seeding).
     pub demo_csv: std::path::PathBuf,
     pub port: u16,
-    /// Baseline lookback window in days.
+    /// Trend lookback window in days (the personal baseline is the earliest steady state).
     pub window_days: i64,
 }
 
@@ -75,7 +75,7 @@ impl Config {
             port: env_or("APP_PORT", "8003")
                 .parse()
                 .map_err(|_| ConfigError("APP_PORT must be a valid port number".to_string()))?,
-            window_days: env_or("APP_WINDOW_DAYS", "90")
+            window_days: env_or("APP_WINDOW_DAYS", "365")
                 .parse()
                 .map_err(|_| ConfigError("APP_WINDOW_DAYS must be a number of days".to_string()))?,
         })

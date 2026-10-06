@@ -34,18 +34,31 @@ fn only_depends_on_serde() {
     assert_eq!(deps, ["serde"]);
 }
 
+fn rust_files(dir: &Path, out: &mut Vec<std::path::PathBuf>) {
+    for entry in std::fs::read_dir(dir).expect("dir readable") {
+        let path = entry.expect("dir entry").path();
+        if path.is_dir() {
+            rust_files(&path, out);
+        } else if path.extension().is_some_and(|e| e == "rs") {
+            out.push(path);
+        }
+    }
+}
+
 #[test]
 fn sources_do_no_io_and_read_no_clock() {
-    let src = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+    let mut files = Vec::new();
+    rust_files(
+        &Path::new(env!("CARGO_MANIFEST_DIR")).join("src"),
+        &mut files,
+    );
+    assert!(files.len() > 5, "walks submodules too");
     let mut offenders = Vec::new();
-    for entry in std::fs::read_dir(&src).expect("src readable") {
-        let path = entry.expect("dir entry").path();
-        if path.extension().is_some_and(|e| e == "rs") {
-            let text = std::fs::read_to_string(&path).expect("source readable");
-            for needle in FORBIDDEN {
-                if text.contains(needle) {
-                    offenders.push(format!("{}: {needle}", path.display()));
-                }
+    for path in files {
+        let text = std::fs::read_to_string(&path).expect("source readable");
+        for needle in FORBIDDEN {
+            if text.contains(needle) {
+                offenders.push(format!("{}: {needle}", path.display()));
             }
         }
     }

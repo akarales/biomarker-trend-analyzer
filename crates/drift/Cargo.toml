@@ -1,6 +1,6 @@
 [package]
 name = "biomarker-drift"
-description = "Personal-baseline drift detection: robust z-scores, EWMA, Theil-Sen trend"
+description = "Personal-baseline drift detection: personalised reference intervals, RCV, CUSUM/EWMA, Mann-Kendall, clinical thresholds"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

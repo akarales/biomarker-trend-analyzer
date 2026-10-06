@@ -100,43 +100,107 @@ async fn patients_listing_has_three() {
     assert!(patients.iter().all(|p| p["observations"] == 192));
 }
 
-#[tokio::test]
-async fn alice_hba1c_step_is_an_alert() {
-    let (status, body) = get("/api/v1/patients/alice/summary").await;
-    assert_eq!(status, StatusCode::OK);
-    let reports = body["reports"].as_array().expect("reports");
-    let hba1c = reports
+fn report<'a>(summary: &'a Value, code: &str) -> &'a Value {
+    summary["reports"]
+        .as_array()
+        .expect("reports")
         .iter()
-        .find(|r| r["code"] == "HBA1C")
-        .expect("HBA1C report present");
-    assert_eq!(hba1c["status"], "alert", "injected step-up must alert");
-    assert!(hba1c["latest_z"].as_f64().unwrap() >= 3.0);
+        .find(|r| r["code"] == code)
+        .unwrap_or_else(|| panic!("{code} report present"))
+}
+
+fn rules(report: &Value) -> Vec<String> {
+    report["signals"]
+        .as_array()
+        .expect("signals")
+        .iter()
+        .map(|s| {
+            format!(
+                "{}:{}",
+                s["rule"].as_str().unwrap_or("?"),
+                s["severity"].as_str().unwrap_or("?")
+            )
+        })
+        .collect()
+}
+
+/// M2 acceptance: alice's HbA1c 5.6 → 7.0 % is flagged by the prRI and the
+/// ADA diabetes threshold whatever the window (v1: `watch`, z 0.52 at 90 days).
+#[tokio::test]
+async fn alice_hba1c_step_alerts_for_every_window() {
+    for window in [30, 90, 365] {
+        let (status, body) = get(&format!(
+            "/api/v1/patients/alice/summary?window_days={window}"
+        ))
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(body["window_days"], window);
+        let hba1c = report(&body, "HBA1C");
+        assert_eq!(hba1c["status"], "alert", "window {window}");
+        let fired = rules(hba1c);
+        assert!(fired.contains(&"prri:alert".to_string()), "{fired:?}");
+        assert!(fired.contains(&"threshold:alert".to_string()), "{fired:?}");
+        assert_eq!(hba1c["analyte"]["loinc"], "4548-4");
+        assert!(hba1c["change_point"]["t"].is_i64());
+    }
+}
+
+/// M2 acceptance: bob's creatinine noise (≈ 3 %, below CVI 4.4 %) is normal
+/// (v1: `watch`, z 2.7).
+#[tokio::test]
+async fn bob_creatinine_noise_is_normal() {
+    let (_, body) = get("/api/v1/patients/bob/summary").await;
+    let creat = report(&body, "CREAT");
+    assert_eq!(creat["status"], "normal", "{:?}", rules(creat));
+    assert!(creat["signals"].as_array().expect("signals").is_empty());
 }
 
 #[tokio::test]
 async fn bob_ldl_rising_trend_detected() {
-    let (status, body) = get("/api/v1/patients/bob/summary").await;
-    assert_eq!(status, StatusCode::OK);
-    let ldl = body["reports"]
-        .as_array()
-        .expect("reports")
-        .iter()
-        .find(|r| r["code"] == "LDL")
-        .expect("LDL report present");
-    assert_eq!(ldl["trend"], "rising", "gradual rise must be detected");
+    let (_, body) = get("/api/v1/patients/bob/summary").await;
+    let ldl = report(&body, "LDL");
+    assert_eq!(
+        ldl["trend"]["direction"], "rising",
+        "gradual rise must be detected"
+    );
+    assert!(rules(ldl).contains(&"trend:watch".to_string()));
+    assert_eq!(ldl["status"], "watch");
 }
 
 #[tokio::test]
-async fn carol_stable_series_is_normal() {
-    let (status, body) = get("/api/v1/patients/carol/summary").await;
+async fn carol_control_has_no_alerts() {
+    let (_, body) = get("/api/v1/patients/carol/summary").await;
+    for r in body["reports"].as_array().expect("reports") {
+        assert_ne!(r["status"], "alert", "{}: {:?}", r["code"], rules(r));
+    }
+}
+
+/// M2 acceptance: results are identical whatever day the app runs — the
+/// analysis date is explicit (default: the latest result).
+#[tokio::test]
+async fn as_of_is_explicit_and_excludes_later_results() {
+    let (_, latest) = get("/api/v1/patients/alice/summary").await;
+    assert!(latest["as_of"].is_null());
+    let hba1c = report(&latest, "HBA1C");
+    assert_eq!(hba1c["excluded"]["after_as_of"], 0);
+    assert_eq!(hba1c["points"].as_array().expect("points").len(), 48);
+
+    // before alice's step (2026-09-15) nothing alerts
+    let (status, before) = get("/api/v1/patients/alice/summary?as_of=2026-08-31").await;
     assert_eq!(status, StatusCode::OK);
-    let reports = body["reports"].as_array().expect("reports");
-    assert!(
-        reports
-            .iter()
-            .all(|r| r["status"] == "normal" || r["status"] == "watch"),
-        "no alerts for the control patient"
-    );
+    assert!(before["as_of"].is_i64());
+    let hba1c = report(&before, "HBA1C");
+    assert_eq!(hba1c["status"], "normal", "{:?}", rules(hba1c));
+    assert!(hba1c["excluded"]["after_as_of"].as_u64().expect("count") > 0);
+}
+
+#[tokio::test]
+async fn invalid_analysis_params_are_400() {
+    for query in ["window_days=1", "window_days=abc", "as_of=yesterday"] {
+        let (status, body) = get(&format!("/api/v1/patients/alice/summary?{query}")).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{query}");
+        assert_eq!(body["code"], "bad_request");
+    }
 }
 
 #[tokio::test]
@@ -145,8 +209,15 @@ async fn series_returns_observations_and_report() {
     assert_eq!(status, StatusCode::OK);
     let observations = body["observations"].as_array().expect("observations");
     assert_eq!(observations.len(), 48);
+    assert_eq!(observations[0]["taken_at"], "2026-01-06T00:00:00Z");
     assert_eq!(body["code"], "HBA1C");
-    assert!(body["report"]["baseline"].is_object());
+    let report = &body["report"];
+    assert!(report["baseline"]["prri_low"].as_f64().expect("prri") < 5.6);
+    assert!(report["rcv"]["up"].as_f64().expect("rcv") > 0.0);
+    assert_eq!(
+        report["thresholds"].as_array().expect("thresholds").len(),
+        2
+    );
 }
 
 #[tokio::test]

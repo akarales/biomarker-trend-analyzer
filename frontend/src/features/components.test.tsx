@@ -7,7 +7,7 @@ import { useAnalyzer } from '@/state';
 import { report, series } from '@/test/fixtures';
 
 import { BiomarkerCard } from './biomarker';
-import { TrendChart, TrendPanel } from './chart';
+import { SignalList, TrendChart, TrendPanel } from './chart';
 import { PatientList } from './patients';
 import { UploadPanel } from './upload';
 
@@ -19,29 +19,51 @@ afterEach(() => {
 });
 
 describe('BiomarkerCard', () => {
-  it('shows z, trend and status, and selects by code', () => {
+  it('shows latest, trend, status and the deciding rule, and selects by code', () => {
     const onSelect = vi.fn();
-    render(<BiomarkerCard report={report('LDL', { latest_z: 2.345, status: 'watch' })} selected onSelect={onSelect} />);
-    const card = screen.getByRole('button', { name: /^LDL/ });
-    expect(card.textContent).toContain('z=2.3 · flat');
-    expect(card.textContent).toContain('watch');
+    const r = series('alice', 'HBA1C').report;
+    render(<BiomarkerCard report={r} selected onSelect={onSelect} />);
+    const card = screen.getByRole('button', { name: /^HBA1C/ });
+    expect(card.textContent).toContain('latest 7.00 · —');
+    expect(card.textContent).toContain('alert · Personal reference interval');
     expect(card.className).toContain('ring-2');
     fireEvent.click(card);
-    expect(onSelect).toHaveBeenCalledWith('LDL');
+    expect(onSelect).toHaveBeenCalledWith('HBA1C');
   });
 
-  it('renders em dashes for missing detector values', () => {
-    render(<BiomarkerCard report={report('TSH', { latest_z: null, trend: null })} selected={false} onSelect={() => {}} />);
-    expect(screen.getByRole('button').textContent).toContain('z=— · —');
+  it('renders em dashes for missing values and no rule when nothing fired', () => {
+    render(<BiomarkerCard report={report('TSH', { latest: null })} selected={false} onSelect={() => {}} />);
+    const text = screen.getByRole('button').textContent ?? '';
+    expect(text).toContain('latest — · —');
+    expect(text.endsWith('normal')).toBe(true);
   });
 });
 
 describe('TrendChart', () => {
-  it('titles the chart and draws one anomaly marker', () => {
+  it('titles the chart, labels the prRI band and marks the result outside it', () => {
     const { container } = render(<TrendChart series={series('alice', 'HBA1C')} />);
     expect(screen.getByRole('heading', { name: 'HBA1C (%) · 3 readings' })).toBeTruthy();
     expect(container.querySelectorAll('circle')).toHaveLength(1);
+    expect(screen.getByText('personal range 5.38–5.82')).toBeTruthy();
+    expect(screen.getByText('2026-01-01')).toBeTruthy();
     expect(screen.getByText('alert')).toBeTruthy();
+  });
+});
+
+describe('SignalList', () => {
+  it('explains each signal with its source and lists what was not assessed', () => {
+    const r = { ...series('alice', 'HBA1C').report, not_assessed: [{ rule: 'trend' as const, reason: 'needs ≥ 4 results' }] };
+    render(<SignalList report={r} />);
+    const region = screen.getByRole('region', { name: 'Signals' });
+    expect(region.textContent).toContain('Personal reference interval · alert');
+    expect(region.textContent).toContain('Source: Coşkun A et al., Clin Chem 2021');
+    expect(region.textContent).toContain('Trend (Mann–Kendall): needs ≥ 4 results');
+    expect(region.textContent).toContain('clinician review required');
+  });
+
+  it('says that no signal is not a clean bill of health', () => {
+    render(<SignalList report={report('LDL')} />);
+    expect(screen.getByText(/not a statement that the result is healthy/)).toBeTruthy();
   });
 });
 

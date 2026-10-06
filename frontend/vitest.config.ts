@@ -2,9 +2,8 @@ import { defineConfig, mergeConfig } from 'vitest/config';
 
 import viteConfig from './vite.config.ts';
 
-// Workers inherit this. The v1 chart parses naive `taken_at` strings as
-// local time but anomaly times are UTC epochs, so dots only line up in UTC
-// (known issue, fixed with the M4 chart rewrite).
+// Workers inherit this. The chart works on epoch seconds (time-zone free);
+// UTC keeps date labels in tests identical on every machine.
 process.env.TZ ??= 'UTC';
 
 // Unit tests: pure domain logic + the zustand store (network mocked).

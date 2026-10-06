@@ -5,8 +5,9 @@ export function AppHeader() {
       <div>
         <h1 className="text-base font-semibold">Biomarker Trend Analyzer</h1>
         <p className="text-xs text-muted">
-          Personal baselines · robust z-scores · Theil–Sen drift · synthetic
-          demo data · not medical advice
+          Personal reference intervals · reference change values · CUSUM/EWMA ·
+          Mann–Kendall trends · synthetic demo data · not medical advice
+          (clinician review required)
         </p>
       </div>
     </header>

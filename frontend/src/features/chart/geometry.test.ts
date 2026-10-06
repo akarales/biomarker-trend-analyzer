@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
-import { series } from '@/test/fixtures';
+import { report, series } from '@/test/fixtures';
 
 import { chartGeometry, HEIGHT, PAD, WIDTH } from './geometry';
 
 describe('chartGeometry', () => {
   it('spans the plot area left to right in time order', () => {
-    const g = chartGeometry(series('alice', 'HBA1C'));
+    const g = chartGeometry(series('alice', 'HBA1C').report);
     expect(g.points).toHaveLength(3);
     expect(g.points[0].cx).toBeCloseTo(PAD);
     expect(g.points[2].cx).toBeCloseTo(WIDTH - PAD);
@@ -14,27 +14,32 @@ describe('chartGeometry', () => {
     expect(g.path.split(' L')).toHaveLength(3);
   });
 
-  it('keeps every point and the baseline band inside the plot', () => {
-    const g = chartGeometry(series('alice', 'HBA1C'));
-    for (const y of [...g.points.map((p) => p.cy), g.bandTop, g.bandBottom, g.medianLine]) {
+  it('keeps every point and the personal reference interval inside the plot', () => {
+    const g = chartGeometry(series('alice', 'HBA1C').report);
+    const band = g.band!;
+    for (const y of [...g.points.map((p) => p.cy), band.top, band.bottom, band.middle]) {
       expect(y).toBeGreaterThanOrEqual(PAD);
       expect(y).toBeLessThanOrEqual(HEIGHT - PAD);
     }
-    expect(g.bandTop).toBeLessThan(g.medianLine);
-    expect(g.medianLine).toBeLessThan(g.bandBottom);
+    expect(band.top).toBeLessThan(band.middle);
+    expect(band.middle).toBeLessThan(band.bottom);
   });
 
-  it('marks the anomalous reading (higher value = smaller y)', () => {
-    const g = chartGeometry(series('alice', 'HBA1C'));
-    expect(g.points.map((p) => p.anomaly)).toEqual([false, false, true]);
+  it('flags results outside the prRI (higher value = smaller y)', () => {
+    const g = chartGeometry(series('alice', 'HBA1C').report);
+    expect(g.points.map((p) => p.flagged)).toEqual([false, false, true]);
     expect(g.points[2].cy).toBeLessThan(g.points[0].cy);
   });
 
+  it('has no band and flags nothing without a baseline', () => {
+    const g = chartGeometry(report('HBA1C'));
+    expect(g.band).toBeNull();
+    expect(g.points.every((p) => !p.flagged)).toBe(true);
+  });
+
   it('handles a single flat reading without dividing by zero', () => {
-    const s = series('alice', 'HBA1C');
-    s.observations = s.observations.slice(0, 1);
-    s.report = { ...s.report, baseline: { median: 5.5, robust_std: 0, n: 1 } };
-    const g = chartGeometry(s);
+    const r = report('HBA1C', { points: [{ t: 0, v: 5.5 }], latest: { t: 0, v: 5.5 } });
+    const g = chartGeometry(r);
     expect(Number.isFinite(g.points[0].cx)).toBe(true);
     expect(Number.isFinite(g.points[0].cy)).toBe(true);
   });

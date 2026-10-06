@@ -1,4 +1,4 @@
-import type { BiomarkerSeries } from '@/api/schemas';
+import type { DriftReport } from '@/api/schemas';
 
 export const WIDTH = 880;
 export const HEIGHT = 320;
@@ -8,49 +8,53 @@ export interface ChartPoint {
   /** screen coordinates */
   cx: number;
   cy: number;
-  anomaly: boolean;
+  /** outside the personal reference interval */
+  flagged: boolean;
+}
+
+export interface ChartBand {
+  top: number;
+  bottom: number;
+  /** set point line */
+  middle: number;
 }
 
 export interface ChartGeometry {
   points: ChartPoint[];
-  /** SVG path through every observation */
+  /** SVG path through every analysed point */
   path: string;
-  bandTop: number;
-  bandBottom: number;
-  medianLine: number;
+  /** personal reference interval, when a baseline exists */
+  band: ChartBand | null;
 }
 
 /**
- * Pure layout for the trend chart: x = observation time, y = value, padded
- * so the personal-baseline band (median ± robust σ) is always in view.
+ * Pure layout for the trend chart from the analysed (normalised) points:
+ * x = time (epoch seconds, so no browser time-zone parsing), y = value,
+ * padded so the personal reference interval is always in view.
  */
-export function chartGeometry(series: BiomarkerSeries): ChartGeometry {
-  const data = series.observations.map((o) => ({
-    x: new Date(o.taken_at).getTime(),
-    y: o.value,
-  }));
-  // Anomaly timestamps arrive as epoch seconds; chart x is epoch ms.
-  const anomalyTimes = new Set(series.report.anomalies.map((a) => a.t * 1000));
-  const { median, robust_std: sigma } = series.report.baseline;
-
-  const xs = data.map((p) => p.x);
-  const ys = data.map((p) => p.y);
+export function chartGeometry(report: DriftReport): ChartGeometry {
+  const { points: data, baseline } = report;
+  const xs = data.map((p) => p.t);
+  const ys = [...data.map((p) => p.v), ...(baseline ? [baseline.prri_low, baseline.prri_high] : [])];
   const xMin = Math.min(...xs);
   const xMax = Math.max(...xs, xMin + 1);
-  const yMin = Math.min(...ys, median - sigma);
-  const yMax = Math.max(...ys, median + sigma);
+  const yMin = Math.min(...ys);
+  const yMax = Math.max(...ys);
   const yPad = (yMax - yMin) * 0.1 || 1;
   const yLo = yMin - yPad;
   const yHi = yMax + yPad;
 
   const sx = (x: number) => PAD + ((x - xMin) / (xMax - xMin)) * (WIDTH - 2 * PAD);
   const sy = (y: number) => HEIGHT - PAD - ((y - yLo) / (yHi - yLo)) * (HEIGHT - 2 * PAD);
+  const outside = (v: number) => baseline !== null && (v < baseline.prri_low || v > baseline.prri_high);
 
   return {
-    points: data.map((p) => ({ cx: sx(p.x), cy: sy(p.y), anomaly: anomalyTimes.has(p.x) })),
-    path: data.map((p, i) => `${i === 0 ? 'M' : 'L'}${sx(p.x).toFixed(1)},${sy(p.y).toFixed(1)}`).join(' '),
-    bandTop: sy(median + sigma),
-    bandBottom: sy(median - sigma),
-    medianLine: sy(median),
+    points: data.map((p) => ({ cx: sx(p.t), cy: sy(p.v), flagged: outside(p.v) })),
+    path: data.map((p, i) => `${i === 0 ? 'M' : 'L'}${sx(p.t).toFixed(1)},${sy(p.v).toFixed(1)}`).join(' '),
+    band: baseline && {
+      top: sy(baseline.prri_high),
+      bottom: sy(baseline.prri_low),
+      middle: sy(baseline.set_point),
+    },
   };
 }
