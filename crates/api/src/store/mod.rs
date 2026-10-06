@@ -46,10 +46,11 @@ impl Store {
         }
     }
 
+    /// Idempotent insert: results already stored are reported as duplicates.
     pub async fn insert_observations(
         &self,
         observations: &[Observation],
-    ) -> Result<usize, StoreError> {
+    ) -> Result<InsertReport, StoreError> {
         match self {
             Store::Memory(store) => store.insert_observations(observations),
             Store::Postgres(store) => store.insert_observations(observations).await,
@@ -81,6 +82,24 @@ impl Store {
         match self {
             Store::Memory(store) => store.patient_codes(patient_id),
             Store::Postgres(store) => store.patient_codes(patient_id).await,
+        }
+    }
+}
+
+/// Outcome of an idempotent insert.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+pub struct InsertReport {
+    pub inserted: usize,
+    /// Rows whose (patient_id, code, taken_at) was already stored (or
+    /// repeated within the same batch).
+    pub duplicates: usize,
+}
+
+impl InsertReport {
+    pub fn new(inserted: usize, submitted: usize) -> Self {
+        Self {
+            inserted,
+            duplicates: submitted.saturating_sub(inserted),
         }
     }
 }

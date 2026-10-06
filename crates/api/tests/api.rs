@@ -23,10 +23,11 @@ async fn test_app() -> axum::Router {
     let store = Store::Memory(MemoryStore::default());
     let csv = fixture_csv();
     let observations = biomarker_ingest::parse_csv_bytes(csv.as_bytes()).expect("fixture parses");
-    store
+    let report = store
         .insert_observations(&observations)
         .await
         .expect("seed inserts");
+    assert_eq!(report.inserted, 576);
     let config = Config {
         store: StoreBackend::Memory,
         database_url: None,
@@ -59,9 +60,9 @@ async fn get(path: &str) -> (StatusCode, Value) {
     (status, body)
 }
 
-async fn post_text(path: &str, body: String) -> (StatusCode, Value) {
-    let app = test_app().await;
+async fn post_text_to(app: &axum::Router, path: &str, body: String) -> (StatusCode, Value) {
     let response = app
+        .clone()
         .oneshot(
             Request::post(path)
                 .header("content-type", "text/csv")
@@ -76,6 +77,10 @@ async fn post_text(path: &str, body: String) -> (StatusCode, Value) {
         .expect("body reads");
     let body: Value = serde_json::from_slice(&bytes).expect("json body");
     (status, body)
+}
+
+async fn post_text(path: &str, body: String) -> (StatusCode, Value) {
+    post_text_to(&test_app().await, path, body).await
 }
 
 #[tokio::test]
@@ -149,29 +154,90 @@ async fn unknown_patient_404() {
     let (status, body) = get("/api/v1/patients/ghost/summary").await;
     assert_eq!(status, StatusCode::NOT_FOUND);
     assert!(body["error"].as_str().unwrap().contains("ghost"));
+    assert_eq!(body["code"], "not_found");
 }
 
 #[tokio::test]
 async fn unknown_series_404() {
-    let (status, _) = get("/api/v1/patients/alice/biomarkers/ZZZ").await;
+    let (status, body) = get("/api/v1/patients/alice/biomarkers/ZZZ").await;
     assert_eq!(status, StatusCode::NOT_FOUND);
+    assert_eq!(body["code"], "not_found");
 }
 
 #[tokio::test]
-async fn upload_accepts_new_csv() {
+async fn upload_is_idempotent() {
+    let app = test_app().await;
     let csv = "\
 patient_id,code,value,unit,taken_at,source\
+\ndave,HBA1C,7.2,%,2026-09-01,upload\
 \ndave,HBA1C,7.2,%,2026-09-01,upload\n";
-    let (status, body) = post_text("/api/v1/observations", csv.to_string()).await;
+    let (status, body) = post_text_to(&app, "/api/v1/observations", csv.to_string()).await;
     assert_eq!(status, StatusCode::CREATED);
     assert_eq!(body["inserted"], 1);
+    assert_eq!(body["duplicates"], 1, "repeat within one batch");
     assert_eq!(body["patients"], 1);
 
-    // And it shows up in listings (fresh app per request here; the point
-    // is the upload contract, not persistence across instances).
-    let (status, body) = post_text("/api/v1/observations", csv.to_string()).await;
+    // Same file again on the same instance: nothing new is stored.
+    let (status, body) = post_text_to(&app, "/api/v1/observations", csv.to_string()).await;
     assert_eq!(status, StatusCode::CREATED);
-    assert_eq!(body["inserted"], 1);
+    assert_eq!(body["inserted"], 0);
+    assert_eq!(body["duplicates"], 2);
+
+    // Re-uploading the whole demo fixture (a restart re-seed) changes nothing.
+    let (_, body) = post_text_to(&app, "/api/v1/observations", fixture_csv()).await;
+    assert_eq!(body["inserted"], 0);
+    assert_eq!(body["duplicates"], 576);
+    let response = app
+        .oneshot(
+            Request::get("/api/v1/patients")
+                .body(Body::empty())
+                .expect("request builds"),
+        )
+        .await
+        .expect("in-process request");
+    let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .expect("body reads");
+    let body: Value = serde_json::from_slice(&bytes).expect("json body");
+    let patients = body["patients"].as_array().expect("patients array");
+    assert_eq!(patients.len(), 4);
+    let dave = patients
+        .iter()
+        .find(|p| p["patient_id"] == "dave")
+        .expect("dave listed");
+    assert_eq!(dave["observations"], 1);
+    assert!(
+        patients
+            .iter()
+            .filter(|p| p["patient_id"] != "dave")
+            .all(|p| p["observations"] == 192)
+    );
+}
+
+#[tokio::test]
+async fn responses_carry_a_request_id() {
+    let app = test_app().await;
+    let generated = app
+        .clone()
+        .oneshot(
+            Request::get("/api/v1/patients/ghost/summary")
+                .body(Body::empty())
+                .expect("request builds"),
+        )
+        .await
+        .expect("in-process request");
+    assert!(generated.headers().contains_key("x-request-id"));
+
+    let echoed = app
+        .oneshot(
+            Request::get("/health")
+                .header("x-request-id", "client-abc_123")
+                .body(Body::empty())
+                .expect("request builds"),
+        )
+        .await
+        .expect("in-process request");
+    assert_eq!(echoed.headers()["x-request-id"], "client-abc_123");
 }
 
 #[tokio::test]
@@ -180,12 +246,14 @@ async fn upload_rejects_bad_csv() {
     let (status, body) = post_text("/api/v1/observations", "garbage,header\n".to_string()).await;
     assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
     assert!(body["error"].as_str().unwrap().contains("schema mismatch"));
+    assert_eq!(body["code"], "invalid_csv");
 
     // A valid header with zero data rows -> 400 "no observations".
     let empty = "patient_id,code,value,unit,taken_at,source\n";
     let (status, body) = post_text("/api/v1/observations", empty.to_string()).await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
     assert!(body["error"].as_str().unwrap().contains("no observations"));
+    assert_eq!(body["code"], "bad_request");
 
     // A non-numeric value against the enforced schema -> 422 CSV error.
     let bad = "\

@@ -51,6 +51,8 @@ export interface BiomarkerSeries {
 
 export interface UploadResult {
   inserted: number;
+  /** rows already stored (same patient, code and timestamp) — skipped */
+  duplicates: number;
   patients: number;
   biomarkers: string[];
 }

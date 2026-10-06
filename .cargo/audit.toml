@@ -1,0 +1,12 @@
+# cargo audit policy. Every ignore needs a reason and a revisit trigger.
+[advisories]
+ignore = [
+    # quick-xml 0.39.4 (DoS on crafted XML). Path: polars 0.55.2 -> polars-stream
+    # -> polars-io "cloud" -> object_store 0.13 (parses S3/Azure XML replies).
+    # This app only reads local CSV and never contacts an object store, so the
+    # vulnerable parser never sees input. No fix: polars 0.55.2 is the latest
+    # release and object_store 0.13 requires quick-xml 0.39. Accepted 2026-10-06;
+    # revisit when polars moves to object_store >= 0.14.
+    "RUSTSEC-2026-0194",
+    "RUSTSEC-2026-0195",
+]

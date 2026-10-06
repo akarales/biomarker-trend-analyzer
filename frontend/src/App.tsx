@@ -75,7 +75,8 @@ export default function App() {
     uploadCsv(uploadText)
       .then((result) => {
         setUploadMessage(
-          `Inserted ${result.inserted} observations across ${result.patients} patient(s): ${result.biomarkers.join(', ')}`,
+          `Inserted ${result.inserted} observations across ${result.patients} patient(s): ${result.biomarkers.join(', ')}` +
+            (result.duplicates > 0 ? ` (${result.duplicates} already stored, skipped)` : ''),
         );
         setUploadText('');
         reloadPatients();

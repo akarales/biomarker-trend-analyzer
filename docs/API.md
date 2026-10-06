@@ -22,8 +22,12 @@ dave,HBA1C,7.2,%,2026-09-01,upload'
 ```
 
 ```json
-{ "inserted": 1, "patients": 1, "biomarkers": ["HBA1C"] }
+{ "inserted": 1, "duplicates": 0, "patients": 1, "biomarkers": ["HBA1C"] }
 ```
+
+Uploads are idempotent: a row whose `(patient_id, code, taken_at)` is
+already stored (or repeated in the same file) is skipped and counted in
+`duplicates` — posting the same file twice returns `inserted: 0`.
 
 Enforced CSV schema (exact header): `patient_id,code,value,unit,taken_at,source`.
 `taken_at` accepts `YYYY-MM-DD` or full ISO datetimes.
@@ -72,9 +76,14 @@ the baseline band from `baseline`.
 
 ## Errors
 
-| Status | Meaning |
-|--------|---------|
-| `400` | valid header but zero data rows ("no observations") |
-| `404` | unknown patient / biomarker |
-| `422` | CSV errors — schema mismatch (header), bad value, bad date (all name the row and column) |
-| `500` | store error (postgres down in pg mode) |
+Every error body is `{"error": "<message>", "code": "<stable code>"}` —
+clients branch on `code`. Every response carries `x-request-id` (a
+well-formed incoming id is echoed, otherwise one is generated); the same id
+is on the server's log lines for that request.
+
+| Status | `code` | Meaning |
+|--------|--------|---------|
+| `400` | `bad_request` | valid header but zero data rows ("no observations") |
+| `404` | `not_found` | unknown patient / biomarker |
+| `422` | `invalid_csv` | schema mismatch (header), bad value, bad date (all name the row and column) |
+| `500` | `internal` | store failure (e.g. Postgres down) — details only in the server log |

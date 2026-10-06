@@ -25,10 +25,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let csv = std::fs::read_to_string(&config.demo_csv)?;
         match biomarker_ingest::parse_csv_bytes(csv.as_bytes()) {
             Ok(observations) => {
-                let inserted = store.insert_observations(&observations).await?;
+                let report = store.insert_observations(&observations).await?;
                 tracing::info!(
                     patients = observations.iter().map(|o| o.patient_id.as_str()).collect::<std::collections::BTreeSet<_>>().len(),
-                    inserted,
+                    inserted = report.inserted,
+                    duplicates = report.duplicates,
                     demo_csv = %config.demo_csv.display(),
                     "seeded demo data"
                 );

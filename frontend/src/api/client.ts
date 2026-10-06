@@ -7,9 +7,14 @@ import type {
 
 export class ApiError extends Error {
   status: number;
-  constructor(status: number, message: string) {
+  /** stable machine-readable code from the `{error, code}` body */
+  code: string | null;
+  requestId: string | null;
+  constructor(status: number, message: string, code: string | null, requestId: string | null) {
     super(message);
     this.status = status;
+    this.code = code;
+    this.requestId = requestId;
   }
 }
 
@@ -19,8 +24,23 @@ async function api<T>(path: string, init?: RequestInit): Promise<T> {
     headers: init?.body ? { 'Content-Type': 'text/csv' } : undefined,
   });
   if (!res.ok) {
-    const body = await res.text();
-    throw new ApiError(res.status, body || res.statusText);
+    const text = await res.text();
+    let message = text || res.statusText;
+    let code: string | null = null;
+    try {
+      const body = JSON.parse(text) as { error?: string; code?: string };
+      message = body.error ?? message;
+      code = body.code ?? null;
+    } catch {
+      // non-JSON body (proxy error page): keep the raw text
+    }
+    const requestId = res.headers.get('x-request-id');
+    throw new ApiError(
+      res.status,
+      requestId ? `${message} (request ${requestId})` : message,
+      code,
+      requestId,
+    );
   }
   return (await res.json()) as T;
 }

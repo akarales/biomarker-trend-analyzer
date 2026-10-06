@@ -33,9 +33,8 @@ hand-rolled SVG trend charts.
   header validation and row-level, column-named errors
 - **Store abstraction** (the ZAP Runtime `store/mod.rs` pattern) —
   MemoryStore for tests/demos, PgStore (sqlx + startup migrations) for
-  runtime
-- **pgvector-ready** — Postgres image and migration enable the similar-
-  patient-trajectory roadmap feature
+  runtime; idempotent inserts (re-seeding or re-uploading never
+  duplicates results), real-Postgres tests in CI
 - **Zero-dependency charts** — SVG trend chart with baseline band and
   anomaly markers, written by hand
 
@@ -57,14 +56,14 @@ Full breakdown in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 cargo run -p biomarker-api    # :8003 — memory store, seeded with synthetic
                               # demo data (3 patients, 576 readings, one
                               # injected HBA1C step-up, one gradual LDL rise)
-cd frontend && pnpm install && pnpm dev   # → http://localhost:5173
+cd frontend && pnpm install && pnpm dev   # → http://localhost:5174
 ```
 
 Postgres mode (migrations run automatically at startup):
 
 ```bash
-docker compose up -d db
-APP_STORE=postgres APP_DATABASE_URL=postgresql://app:app@localhost:5433/biomarkers \
+docker compose up -d db       # postgres:17-alpine on 127.0.0.1:5435
+APP_STORE=postgres APP_DATABASE_URL=postgresql://app:app@127.0.0.1:5435/biomarkers \
   cargo run -p biomarker-api
 ```
 
@@ -106,7 +105,7 @@ curl + JSON examples: [docs/API.md](docs/API.md).
 
 - [x] Phase 0 — scaffold: drift math, ingestion, stores, API, charts, CI
 - [ ] Phase 1 — FHIR R4 Observation ingestion (reuses app #3's models)
-- [ ] Phase 2 — similar-patient trajectories via pgvector embeddings
+- [ ] Phase 2 — similar-patient trajectories (embeddings; deferred)
 - [ ] Phase 3 — LLM narrative summaries of drift (Ollama)
 
 </details>

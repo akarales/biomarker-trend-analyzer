@@ -1,9 +1,7 @@
 -- Biomarker Trend Analyzer schema.
--- pgvector is enabled here (compose runs the pgvector image) for the
--- roadmap feature: embedding patient biomarker trajectories to find
--- similar patients. No vector columns yet — introduced with that feature.
-
-CREATE EXTENSION IF NOT EXISTS vector;
+-- One row per lab result. (patient_id, code, taken_at) identifies a result,
+-- so re-seeding or re-uploading the same file is a no-op (ON CONFLICT DO
+-- NOTHING) instead of duplicating the series.
 
 CREATE TABLE IF NOT EXISTS observations (
     id BIGSERIAL PRIMARY KEY,
@@ -13,8 +11,6 @@ CREATE TABLE IF NOT EXISTS observations (
     unit TEXT NOT NULL,
     taken_at TIMESTAMPTZ NOT NULL,
     source TEXT NOT NULL DEFAULT 'csv',
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT observations_result_key UNIQUE (patient_id, code, taken_at)
 );
-
-CREATE INDEX IF NOT EXISTS idx_obs_patient_code_time
-    ON observations (patient_id, code, taken_at);

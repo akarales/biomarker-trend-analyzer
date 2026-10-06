@@ -5,7 +5,7 @@ use std::sync::Mutex;
 
 use biomarker_ingest::Observation;
 
-use super::{PatientSummary, StoreError};
+use super::{InsertReport, PatientSummary, StoreError};
 
 #[derive(Default)]
 struct Inner {
@@ -25,13 +25,21 @@ impl MemoryStore {
         self.inner.lock().expect("store lock poisoned")
     }
 
-    pub fn insert_observations(&self, observations: &[Observation]) -> Result<usize, StoreError> {
+    /// Same contract as Postgres: (patient_id, code, taken_at) is unique;
+    /// the first row wins and later ones count as duplicates.
+    pub fn insert_observations(
+        &self,
+        observations: &[Observation],
+    ) -> Result<InsertReport, StoreError> {
         let mut guard = self.lock();
+        let mut inserted = 0usize;
         for observation in observations {
             let key = (observation.patient_id.clone(), observation.code.clone());
             let series = guard.series.entry(key).or_default();
-            series.push(observation.clone());
-            series.sort_by_key(|o| o.taken_at);
+            if let Err(at) = series.binary_search_by_key(&observation.taken_at, |o| o.taken_at) {
+                series.insert(at, observation.clone());
+                inserted += 1;
+            }
         }
         for observation in observations {
             let codes = guard
@@ -42,7 +50,7 @@ impl MemoryStore {
                 codes.push(observation.code.clone());
             }
         }
-        Ok(observations.len())
+        Ok(InsertReport::new(inserted, observations.len()))
     }
 
     pub fn series(&self, patient_id: &str, code: &str) -> Result<Vec<Observation>, StoreError> {

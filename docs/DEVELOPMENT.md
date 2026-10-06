@@ -11,21 +11,26 @@ Machine-facing commands live in [AGENTS.md](../AGENTS.md).
 
 ```bash
 cargo run -p biomarker-api      # :8003, demo-seeded memory store
-cd frontend && pnpm dev         # :5173 → /api proxied
-cargo test --workspace -q      # 24 tests — no Postgres, no network
+cd frontend && pnpm dev         # :5174 (strict) → /api proxied
+cargo test --workspace -q      # 27 tests — no Postgres, no network
 cargo clippy --workspace --all-targets -- -D warnings
 ```
 
 ## Postgres mode
 
 ```bash
-docker compose up -d db         # pgvector/pgvector:pg17 on :5433
-APP_STORE=postgres APP_DATABASE_URL=postgresql://app:app@localhost:5433/biomarkers \
-  cargo run -p biomarker-api    # migrations run at startup
+docker compose up -d db         # postgres:17-alpine on 127.0.0.1:5435
+APP_STORE=postgres APP_DATABASE_URL=postgresql://app:app@127.0.0.1:5435/biomarkers \
+  cargo run -p biomarker-api    # migrations run at startup; re-seeding is a no-op
 ```
 
-CI never runs a database — the PgStore code compiles, MemoryStore serves
-tests. Live Postgres tests are a roadmap item (skip-if-no-db pattern).
+Real-database tests sit behind the `pg-tests` feature (`#[sqlx::test]`
+creates a fresh database per test); CI runs them in a `postgres` job:
+
+```bash
+DATABASE_URL=postgresql://app:app@127.0.0.1:5435/biomarkers \
+  cargo test -p biomarker-api --features pg-tests --test pg_store
+```
 
 ## Testing notes
 
@@ -45,7 +50,10 @@ tests. Live Postgres tests are a roadmap item (skip-if-no-db pattern).
   `PlRefPath`, not a `&str`
 - **sqlx 0.9**: `query_as` turbofish is `<DB, O>` order; the `macros`
   feature is required for `sqlx::migrate!`
-- Port 8002 is taken on this machine — this service runs on 8003
+- **sqlx + TIMESTAMPTZ**: decode into `DateTime<Utc>`, never
+  `NaiveDateTime` (v1 shipped that mismatch untested)
+- Port 8002 is taken on this machine — this service runs on 8003;
+  Postgres 5433/5434 belong to other projects — compose uses 5435
 
 ## Conventions
 

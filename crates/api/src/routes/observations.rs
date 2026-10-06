@@ -23,14 +23,11 @@ pub async fn upload(State(state): State<AppState>, body: String) -> Result<Respo
     let patients: BTreeSet<String> = observations.iter().map(|o| o.patient_id.clone()).collect();
     let biomarkers: BTreeSet<String> = observations.iter().map(|o| o.code.clone()).collect();
 
-    let inserted = state
-        .store
-        .insert_observations(&observations)
-        .await
-        .map_err(ApiError::from)?;
+    let report = state.store.insert_observations(&observations).await?;
 
     let payload = json!({
-        "inserted": inserted,
+        "inserted": report.inserted,
+        "duplicates": report.duplicates,
         "patients": patients.len(),
         "biomarkers": biomarkers,
     });

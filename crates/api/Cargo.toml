@@ -21,3 +21,7 @@ sqlx.workspace = true
 
 [dev-dependencies]
 tower.workspace = true
+
+[features]
+# integration tests against a real Postgres (CI job with a postgres:17 service)
+pg-tests = []

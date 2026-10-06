@@ -9,10 +9,12 @@ RUN cargo build --release -p biomarker-api
 FROM debian:bookworm-slim
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    && useradd --system --uid 10001 --no-create-home --shell /usr/sbin/nologin app
 COPY --from=builder /build/target/release/biomarker-api /usr/local/bin/
 COPY --from=builder /build/migrations /app/migrations
 WORKDIR /app
 ENV APP_DEMO_CSV=/app/demo_labs.csv
-EXPOSE 8002
+USER app
+EXPOSE 8003
 CMD ["biomarker-api"]

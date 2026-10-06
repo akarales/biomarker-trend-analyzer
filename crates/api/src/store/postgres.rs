@@ -5,10 +5,11 @@
 //! stabilizes.
 
 use biomarker_ingest::Observation;
+use chrono::{DateTime, Utc};
 use sqlx::PgPool;
 use sqlx::postgres::PgPoolOptions;
 
-use super::{PatientSummary, StoreError};
+use super::{InsertReport, PatientSummary, StoreError};
 
 pub struct PgStore {
     pool: PgPool,
@@ -25,39 +26,51 @@ impl PgStore {
             .run(&pool)
             .await
             .map_err(|e| StoreError::Database(format!("migrate: {e}")))?;
-        Ok(Self { pool })
+        Ok(Self::from_pool(pool))
     }
 
+    /// Wrap an already-migrated pool (pg-tests: `#[sqlx::test]`).
+    pub fn from_pool(pool: PgPool) -> Self {
+        Self { pool }
+    }
+
+    /// One statement for the whole batch; rows whose
+    /// (patient_id, code, taken_at) already exist are skipped.
     pub async fn insert_observations(
         &self,
         observations: &[Observation],
-    ) -> Result<usize, StoreError> {
-        let mut inserted = 0usize;
-        let mut tx = self
-            .pool
-            .begin()
-            .await
-            .map_err(|e| StoreError::Database(format!("begin: {e}")))?;
-        for observation in observations {
-            sqlx::query(
-                "INSERT INTO observations (patient_id, code, value, unit, taken_at, source) \
-                 VALUES ($1, $2, $3, $4, $5, $6)",
-            )
-            .bind(&observation.patient_id)
-            .bind(&observation.code)
-            .bind(observation.value)
-            .bind(&observation.unit)
-            .bind(observation.taken_at.and_utc())
-            .bind(&observation.source)
-            .execute(&mut *tx)
-            .await
-            .map_err(|e| StoreError::Database(format!("insert: {e}")))?;
-            inserted += 1;
+    ) -> Result<InsertReport, StoreError> {
+        let mut patient_ids = Vec::with_capacity(observations.len());
+        let mut codes = Vec::with_capacity(observations.len());
+        let mut values = Vec::with_capacity(observations.len());
+        let mut units = Vec::with_capacity(observations.len());
+        let mut taken_ats = Vec::with_capacity(observations.len());
+        let mut sources = Vec::with_capacity(observations.len());
+        for o in observations {
+            patient_ids.push(o.patient_id.clone());
+            codes.push(o.code.clone());
+            values.push(o.value);
+            units.push(o.unit.clone());
+            taken_ats.push(o.taken_at.and_utc());
+            sources.push(o.source.clone());
         }
-        tx.commit()
-            .await
-            .map_err(|e| StoreError::Database(format!("commit: {e}")))?;
-        Ok(inserted)
+        let result = sqlx::query(
+            "INSERT INTO observations (patient_id, code, value, unit, taken_at, source) \
+             SELECT * FROM UNNEST($1::text[], $2::text[], $3::float8[], $4::text[], \
+                                  $5::timestamptz[], $6::text[]) \
+             ON CONFLICT ON CONSTRAINT observations_result_key DO NOTHING",
+        )
+        .bind(&patient_ids)
+        .bind(&codes)
+        .bind(&values)
+        .bind(&units)
+        .bind(&taken_ats)
+        .bind(&sources)
+        .execute(&self.pool)
+        .await
+        .map_err(|e| StoreError::Database(format!("insert: {e}")))?;
+        let inserted = usize::try_from(result.rows_affected()).unwrap_or(usize::MAX);
+        Ok(InsertReport::new(inserted, observations.len()))
     }
 
     pub async fn series(
@@ -65,7 +78,7 @@ impl PgStore {
         patient_id: &str,
         code: &str,
     ) -> Result<Vec<Observation>, StoreError> {
-        let rows: Vec<(String, String, f64, String, chrono::NaiveDateTime, String)> =
+        let rows: Vec<(String, String, f64, String, DateTime<Utc>, String)> =
             sqlx::query_as::<sqlx::Postgres, _>(
                 "SELECT patient_id, code, value, unit, taken_at, source \
                  FROM observations WHERE patient_id = $1 AND code = $2 \
@@ -85,7 +98,7 @@ impl PgStore {
                     code,
                     value,
                     unit,
-                    taken_at,
+                    taken_at: taken_at.naive_utc(),
                     source,
                 },
             )

@@ -11,24 +11,33 @@ Build, test, and verification commands for the Biomarker Trend Analyzer.
 
 ```bash
 cargo run -p biomarker-api          # serve :8003 (memory store, demo-seeded)
-cargo test --workspace -q           # 24 tests, no infra needed
+cargo test --workspace -q           # 27 tests, no infra needed
 cargo clippy --workspace --all-targets -- -D warnings   # must be clean
 cargo fmt --check
+cargo audit                         # accepted advisories + reasons: .cargo/audit.toml
 ```
 
 Postgres mode:
 
 ```bash
-docker compose up -d db             # pgvector image on :5433
-APP_STORE=postgres APP_DATABASE_URL=postgresql://app:app@localhost:5433/biomarkers \
+docker compose up -d db             # postgres:17-alpine on 127.0.0.1:5435
+APP_STORE=postgres APP_DATABASE_URL=postgresql://app:app@127.0.0.1:5435/biomarkers \
   cargo run -p biomarker-api         # migrations run at startup
+DATABASE_URL=postgresql://app:app@127.0.0.1:5435/biomarkers \
+  cargo test -p biomarker-api --features pg-tests --test pg_store   # real-DB tests (CI job)
 ```
+
+- Port 5433 (and 5434) belong to other projects on this machine — never use them
+- Inserts are idempotent: `(patient_id, code, taken_at)` is unique; both
+  stores return `InsertReport { inserted, duplicates }`
+- Errors: body `{error, code}`; store errors map to `internal` (logged,
+  never sent); every response has `x-request-id`
 
 ## Frontend
 
 ```bash
 pnpm install
-pnpm dev          # :5173, proxies /api -> :8003
+pnpm dev          # :5174 strictPort (5173 is app #1's), proxies /api -> :8003
 pnpm build        # tsc -b + vite build
 pnpm lint         # oxlint
 ```
@@ -54,5 +63,8 @@ pnpm lint         # oxlint
   (polars maps the schema positionally otherwise)
 - Store changes: implement both backends behind the enum in
   `crates/api/src/store/` + tests run against MemoryStore only
-- Deps ≥7 days old (see BEST_PRACTICES/INDEX.md), exact via Cargo.lock
+- Deps ≥7 days old (see BEST_PRACTICES/INDEX.md), exact via Cargo.lock;
+  frontend deps exact, `frontend/pnpm-workspace.yaml` sets
+  `minimumReleaseAge: 10080` (pnpm refuses anything younger, incl. transitive)
+- CI actions are SHA-pinned (tag in a comment), `permissions: contents: read`
 - `cargo test` never needs Postgres or network

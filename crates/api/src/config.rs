@@ -6,7 +6,7 @@ pub enum StoreBackend {
     Postgres,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct Config {
     pub store: StoreBackend,
     pub database_url: Option<String>,
@@ -16,6 +16,23 @@ pub struct Config {
     pub port: u16,
     /// Baseline lookback window in days.
     pub window_days: i64,
+}
+
+/// Debug never prints the database URL (it carries credentials).
+impl std::fmt::Debug for Config {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Config")
+            .field("store", &self.store)
+            .field(
+                "database_url",
+                &self.database_url.as_ref().map(|_| "<redacted>"),
+            )
+            .field("seed_demo_data", &self.seed_demo_data)
+            .field("demo_csv", &self.demo_csv)
+            .field("port", &self.port)
+            .field("window_days", &self.window_days)
+            .finish()
+    }
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -39,7 +56,7 @@ impl Config {
         };
         let database_url = std::env::var("APP_DATABASE_URL").ok().or_else(|| {
             if store == StoreBackend::Postgres {
-                Some("postgresql://app:app@localhost:5432/biomarkers".to_string())
+                Some("postgresql://app:app@127.0.0.1:5435/biomarkers".to_string())
             } else {
                 None
             }

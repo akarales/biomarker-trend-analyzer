@@ -54,6 +54,13 @@ pattern:
 - `PgStore` — sqlx pool, migrations run at startup
   (`sqlx::migrate!`), non-macro queries so CI stays DB-free
 
+Inserts are idempotent in both backends: `(patient_id, code, taken_at)`
+identifies a result (Postgres: unique constraint + `ON CONFLICT DO
+NOTHING`, one `UNNEST` statement per batch), so re-seeding on restart or
+re-uploading a file reports duplicates instead of doubling the series.
+Store errors are logged and returned as a generic `internal` error — SQL
+text never reaches clients.
+
 ## Seeded demo
 
 Synthetic generator (deterministic): 3 patients × 4 biomarkers (HBA1C,

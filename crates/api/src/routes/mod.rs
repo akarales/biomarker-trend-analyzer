@@ -5,8 +5,10 @@ pub mod health;
 pub mod observations;
 
 use axum::Router;
+use axum::middleware;
 use axum::routing::{get, post};
 
+use crate::request_id::request_id;
 use crate::state::AppState;
 
 pub fn router(state: AppState) -> Router {
@@ -23,4 +25,5 @@ pub fn router(state: AppState) -> Router {
             get(biomarkers::biomarker_series),
         )
         .with_state(state)
+        .layer(middleware::from_fn(request_id))
 }

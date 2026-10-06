@@ -40,7 +40,7 @@ pub async fn patient_summary(
             })
             .collect();
         let report = biomarker_drift::analyze(&points, code, &unit, state.config.window_days, now);
-        reports.push(serde_json::to_value(&report).unwrap_or(Value::Null));
+        reports.push(report);
     }
 
     Ok(Json(json!({
