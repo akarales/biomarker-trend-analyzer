@@ -13,7 +13,8 @@ export default defineConfig({
     port: 5174,
     strictPort: true,
     proxy: {
-      '/api': { target: 'http://localhost:8003', changeOrigin: true },
+      // API_URL lets the e2e run point the dev/preview server at a test API
+      '/api': { target: process.env.API_URL ?? 'http://localhost:8003', changeOrigin: true },
     },
   },
 });

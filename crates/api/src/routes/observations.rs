@@ -1,17 +1,17 @@
-//! Observation upload: CSV body in, typed rows stored, summary back.
-
-use std::collections::BTreeSet;
+//! Observation upload: CSV body in, typed rows stored idempotently, summary back.
 
 use axum::Json;
 use axum::extract::State;
 use axum::http::StatusCode;
-use axum::response::{IntoResponse, Response};
-use serde_json::json;
 
+use super::views::UploadView;
 use crate::error::ApiError;
 use crate::state::AppState;
 
-pub async fn upload(State(state): State<AppState>, body: String) -> Result<Response, ApiError> {
+pub async fn upload(
+    State(state): State<AppState>,
+    body: String,
+) -> Result<(StatusCode, Json<UploadView>), ApiError> {
     let observations = biomarker_ingest::parse_csv_bytes(body.as_bytes())
         .map_err(|e| ApiError::Csv(e.to_string()))?;
     if observations.is_empty() {
@@ -19,17 +19,9 @@ pub async fn upload(State(state): State<AppState>, body: String) -> Result<Respo
             "upload contained no observations".into(),
         ));
     }
-
-    let patients: BTreeSet<String> = observations.iter().map(|o| o.patient_id.clone()).collect();
-    let biomarkers: BTreeSet<String> = observations.iter().map(|o| o.code.clone()).collect();
-
     let report = state.store.insert_observations(&observations).await?;
-
-    let payload = json!({
-        "inserted": report.inserted,
-        "duplicates": report.duplicates,
-        "patients": patients.len(),
-        "biomarkers": biomarkers,
-    });
-    Ok((StatusCode::CREATED, Json(payload)).into_response())
+    Ok((
+        StatusCode::CREATED,
+        Json(UploadView::new(report, &observations)),
+    ))
 }

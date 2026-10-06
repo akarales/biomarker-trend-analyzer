@@ -1,0 +1,19 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO observations (patient_id, code, value, unit, taken_at, source) SELECT * FROM UNNEST($1::text[], $2::text[], $3::float8[], $4::text[], $5::timestamptz[], $6::text[]) ON CONFLICT ON CONSTRAINT observations_result_key DO NOTHING",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "TextArray",
+        "TextArray",
+        "Float8Array",
+        "TextArray",
+        "TimestamptzArray",
+        "TextArray"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "a89fead4e1fdd312a3dfbe75f47741d7bd958cc8303a6a206d75238e318b08b2"
+}

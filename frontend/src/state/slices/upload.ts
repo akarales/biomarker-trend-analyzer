@@ -1,0 +1,44 @@
+import type { StateCreator } from 'zustand';
+
+import { uploadCsv } from '@/api/observations';
+import type { UploadResult } from '@/api/schemas';
+
+import type { Store } from '../store';
+
+export interface UploadSlice {
+  uploadText: string;
+  /** outcome of the last upload (success summary or error text) */
+  uploadMessage: string | null;
+
+  setUploadText(text: string): void;
+  /** Upload the pasted CSV, then refresh the patient listing. */
+  upload(): Promise<void>;
+}
+
+/** Human summary of an idempotent upload. */
+export function uploadSummary(result: UploadResult): string {
+  return (
+    `Inserted ${result.inserted} observations across ${result.patients} patient(s): ${result.biomarkers.join(', ')}` +
+    (result.duplicates > 0 ? ` (${result.duplicates} already stored, skipped)` : '')
+  );
+}
+
+export const createUploadSlice: StateCreator<Store, [], [], UploadSlice> = (set, get) => ({
+  uploadText: '',
+  uploadMessage: null,
+
+  setUploadText: (uploadText) => set({ uploadText }),
+
+  upload: async () => {
+    const text = get().uploadText;
+    if (!text.trim()) return;
+    set({ uploadMessage: null, error: null });
+    try {
+      const result = await uploadCsv(text);
+      set({ uploadMessage: uploadSummary(result), uploadText: '' });
+      await get().loadPatients();
+    } catch (err) {
+      set({ uploadMessage: String(err) });
+    }
+  },
+});

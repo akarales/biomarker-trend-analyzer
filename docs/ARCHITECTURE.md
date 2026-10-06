@@ -4,10 +4,26 @@
 
 ```
 biomarker-trend-analyzer/
-├── crates/drift/      # biomarker-drift — pure math, no IO, serde only
+├── crates/drift/      # biomarker-drift — pure math, no IO, serde only (tests/purity.rs enforces it)
 ├── crates/ingest/    # biomarker-ingest — polars CSV pipeline
-└── crates/api/       # biomarker-api — axum + stores + routes
+├── crates/api/       # biomarker-api — axum + stores + routes
+│   ├── src/routes/   #   one module per resource (patients, biomarkers, observations, health)
+│   │                 #   + views.rs: every JSON response shape, typed
+│   ├── src/analysis.rs  # Observation → SeriesPoint → drift::analyze (the only call site)
+│   ├── src/store/    #   Memory | Postgres (query! macros, .sqlx/ committed)
+│   └── migrations/   #   embedded by sqlx::migrate!
+└── frontend/src/
+    ├── app/          # shell only: App (layout + initial load), AppHeader
+    ├── features/     # patients · biomarker · chart · upload — each exposes index.ts
+    ├── shared/       # domain (status, tokens), components (ErrorBanner)
+    ├── state/        # one zustand store from slices (patients, biomarker, upload) + selectors
+    └── api/          # http (zod/mini-validated) + per-resource clients + schemas.ts
 ```
+
+Frontend rules are enforced by `src/test/architecture.test.ts`: ≤ ~300
+lines per file, hex colours only in `shared/domain/tokens.ts`, features
+import each other only through `index.ts`, and `api/`, `state/`, `shared/`
+never import `features/` or `app/`.
 
 ## Drift math (crates/drift)
 
@@ -52,7 +68,9 @@ pattern:
 
 - `MemoryStore` — Mutex-guarded BTreeMaps; tests and the offline demo
 - `PgStore` — sqlx pool, migrations run at startup
-  (`sqlx::migrate!`), non-macro queries so CI stays DB-free
+  (`sqlx::migrate!`); compile-time-checked `query!` macros against the
+  committed `.sqlx/` metadata (`SQLX_OFFLINE=true`), so builds and CI
+  need no database; a CI job re-checks the macros against a live schema
 
 Inserts are idempotent in both backends: `(patient_id, code, taken_at)`
 identifies a result (Postgres: unique constraint + `ON CONFLICT DO

@@ -53,7 +53,7 @@ async fn get(app: &axum::Router, path: &str) -> (StatusCode, Value) {
     (status, serde_json::from_slice(&bytes).expect("json body"))
 }
 
-#[sqlx::test(migrations = "../../migrations/postgres")]
+#[sqlx::test(migrations = "./migrations")]
 async fn reseeding_is_idempotent(pool: PgPool) {
     let store = Store::Postgres(PgStore::from_pool(pool));
     let observations = fixture();
@@ -79,7 +79,7 @@ async fn reseeding_is_idempotent(pool: PgPool) {
     );
 }
 
-#[sqlx::test(migrations = "../../migrations/postgres")]
+#[sqlx::test(migrations = "./migrations")]
 async fn series_round_trips_timestamps(pool: PgPool) {
     let store = Store::Postgres(PgStore::from_pool(pool));
     let observations = fixture();
@@ -100,7 +100,7 @@ async fn series_round_trips_timestamps(pool: PgPool) {
     }
 }
 
-#[sqlx::test(migrations = "../../migrations/postgres")]
+#[sqlx::test(migrations = "./migrations")]
 async fn api_summary_works_over_postgres(pool: PgPool) {
     let store = Store::Postgres(PgStore::from_pool(pool));
     store.insert_observations(&fixture()).await.expect("seed");

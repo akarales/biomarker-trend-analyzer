@@ -1,55 +1,20 @@
-import type { BiomarkerSeries } from '@/api/types';
+import type { BiomarkerSeries } from '@/api/schemas';
+import { CHART_COLOR, STATUS_COLOR, STATUS_COLOR_FALLBACK } from '@/shared/domain';
+
+import { chartGeometry, HEIGHT, PAD, WIDTH } from './geometry';
 
 interface Props {
   series: BiomarkerSeries;
 }
 
-const WIDTH = 880;
-const HEIGHT = 320;
-const PAD = 40;
-
 /**
  * Hand-rolled SVG trend chart: values over time, personal-baseline band
  * (median ± robust σ), and anomaly markers. No chart library — the chart
- * math is simple enough to own.
+ * math is simple enough to own (see geometry.ts).
  */
 export function TrendChart({ series }: Props) {
-  const points = series.observations.map((o) => ({
-    x: new Date(o.taken_at).getTime(),
-    y: o.value,
-  }));
-  // Anomaly timestamps arrive as epoch seconds; chart x is epoch ms.
-  const anomalyTimes = new Set(
-    series.report.anomalies.map((a) => a.t * 1000),
-  );
-
-  const xs = points.map((p) => p.x);
-  const ys = points.map((p) => p.y);
-  const xMin = Math.min(...xs);
-  const xMax = Math.max(...xs, xMin + 1);
-  const yMin = Math.min(...ys, series.report.baseline.median - series.report.baseline.robust_std);
-  const yMax = Math.max(...ys, series.report.baseline.median + series.report.baseline.robust_std);
-  const yPad = (yMax - yMin) * 0.1 || 1;
-  const yLo = yMin - yPad;
-  const yHi = yMax + yPad;
-
-  const sx = (x: number) => PAD + ((x - xMin) / (xMax - xMin)) * (WIDTH - 2 * PAD);
-  const sy = (y: number) => HEIGHT - PAD - ((y - yLo) / (yHi - yLo)) * (HEIGHT - 2 * PAD);
-
-  const path = points
-    .map((p, i) => `${i === 0 ? 'M' : 'L'}${sx(p.x).toFixed(1)},${sy(p.y).toFixed(1)}`)
-    .join(' ');
-
+  const { points, path, bandTop, bandBottom, medianLine } = chartGeometry(series);
   const { median, robust_std: sigma } = series.report.baseline;
-  const bandTop = sy(median + sigma);
-  const bandBottom = sy(median - sigma);
-  const medianLine = sy(median);
-
-  const statusColor: Record<string, string> = {
-    alert: '#b91c1c',
-    watch: '#b45309',
-    normal: '#15803d',
-  };
 
   return (
     <div className="rounded-lg border border-line bg-panel p-3">
@@ -60,7 +25,7 @@ export function TrendChart({ series }: Props) {
         </h3>
         <span
           className="rounded px-2 py-0.5 text-xs font-medium text-white"
-          style={{ backgroundColor: statusColor[series.report.status] ?? '#0369a1' }}
+          style={{ backgroundColor: STATUS_COLOR[series.report.status] ?? STATUS_COLOR_FALLBACK }}
         >
           {series.report.status}
         </span>
@@ -72,7 +37,7 @@ export function TrendChart({ series }: Props) {
           y={bandTop}
           width={WIDTH - 2 * PAD}
           height={Math.max(bandBottom - bandTop, 0)}
-          fill="#0f766e"
+          fill={CHART_COLOR.baseline}
           opacity={0.08}
         />
         <line
@@ -80,15 +45,13 @@ export function TrendChart({ series }: Props) {
           x2={WIDTH - PAD}
           y1={medianLine}
           y2={medianLine}
-          stroke="#0f766e"
+          stroke={CHART_COLOR.baseline}
           strokeDasharray="6 4"
           strokeWidth={1.5}
         />
-        <path d={path} fill="none" stroke="#0369a1" strokeWidth={2} />
+        <path d={path} fill="none" stroke={CHART_COLOR.series} strokeWidth={2} />
         {points.map((p, i) =>
-          anomalyTimes.has(p.x) ? (
-            <circle key={i} cx={sx(p.x)} cy={sy(p.y)} r={5} fill="#b91c1c" />
-          ) : null,
+          p.anomaly ? <circle key={i} cx={p.cx} cy={p.cy} r={5} fill={CHART_COLOR.anomaly} /> : null,
         )}
         <text x={PAD} y={HEIGHT - 10} className="fill-muted" fontSize={10}>
           {series.observations[0]?.taken_at.slice(0, 10)}

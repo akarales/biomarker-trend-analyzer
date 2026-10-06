@@ -12,8 +12,9 @@ Machine-facing commands live in [AGENTS.md](../AGENTS.md).
 ```bash
 cargo run -p biomarker-api      # :8003, demo-seeded memory store
 cd frontend && pnpm dev         # :5174 (strict) → /api proxied
-cargo test --workspace -q      # 27 tests — no Postgres, no network
+cargo test --workspace -q      # 31 tests — no Postgres, no network
 cargo clippy --workspace --all-targets -- -D warnings
+cd frontend && pnpm test && pnpm e2e   # vitest (36) + Playwright smoke
 ```
 
 ## Postgres mode
@@ -42,6 +43,12 @@ DATABASE_URL=postgresql://app:app@127.0.0.1:5435/biomarkers \
   lazy group_by stats over a temp file
 - **API tests** upload, list, and read through the real router in-process
   against the seeded fixture
+- **Architecture tests**: `crates/drift/tests/purity.rs` (serde-only, no
+  clock/IO) and `frontend/src/test/architecture.test.ts` (file size, tokens,
+  feature boundaries, layering) — both mutation-checked
+- **Frontend**: store tests mock `@/api/*` and interleave responses with
+  deferred promises (stale summaries/series are dropped); components run
+  in jsdom; e2e runs the real API + production build
 
 ## Gotchas learned here
 
@@ -50,6 +57,14 @@ DATABASE_URL=postgresql://app:app@127.0.0.1:5435/biomarkers \
   `PlRefPath`, not a `&str`
 - **sqlx 0.9**: `query_as` turbofish is `<DB, O>` order; the `macros`
   feature is required for `sqlx::migrate!`
+- **sqlx offline**: after any query/migration change run
+  `cargo sqlx prepare --workspace -- --all-targets --features biomarker-api/pg-tests`
+  against the compose db and commit `.sqlx/`; `COUNT(*)` needs
+  `AS "name!"` to come back non-nullable
+- **Chart time zone (open, M4)**: `taken_at` is naive UTC text parsed by
+  the browser as *local* time while anomaly times are UTC epochs, so
+  anomaly dots only line up when the browser runs in UTC; vitest and
+  Playwright pin `TZ=UTC`
 - **sqlx + TIMESTAMPTZ**: decode into `DateTime<Utc>`, never
   `NaiveDateTime` (v1 shipped that mismatch untested)
 - Port 8002 is taken on this machine — this service runs on 8003;

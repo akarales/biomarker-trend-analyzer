@@ -2,8 +2,11 @@
 FROM rust:1.96-slim AS builder
 WORKDIR /build
 COPY Cargo.toml Cargo.lock ./
+COPY .sqlx ./.sqlx
 COPY crates ./crates
-COPY migrations ./migrations
+# query! macros check against the committed .sqlx/ metadata (no DB at build);
+# migrations are embedded in the binary by sqlx::migrate!
+ENV SQLX_OFFLINE=true
 RUN cargo build --release -p biomarker-api
 
 FROM debian:bookworm-slim
@@ -12,7 +15,6 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/* \
     && useradd --system --uid 10001 --no-create-home --shell /usr/sbin/nologin app
 COPY --from=builder /build/target/release/biomarker-api /usr/local/bin/
-COPY --from=builder /build/migrations /app/migrations
 WORKDIR /app
 ENV APP_DEMO_CSV=/app/demo_labs.csv
 USER app

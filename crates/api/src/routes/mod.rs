@@ -1,8 +1,10 @@
-//! Router assembly.
+//! Router assembly. One module per resource; JSON shaping in `views`.
 
 pub mod biomarkers;
 pub mod health;
 pub mod observations;
+pub mod patients;
+mod views;
 
 use axum::Router;
 use axum::middleware;
@@ -15,14 +17,14 @@ pub fn router(state: AppState) -> Router {
     Router::new()
         .route("/health", get(health::health))
         .route("/api/v1/observations", post(observations::upload))
-        .route("/api/v1/patients", get(biomarkers::patients))
+        .route("/api/v1/patients", get(patients::list))
         .route(
             "/api/v1/patients/{patient_id}/summary",
-            get(biomarkers::patient_summary),
+            get(patients::summary),
         )
         .route(
             "/api/v1/patients/{patient_id}/biomarkers/{code}",
-            get(biomarkers::biomarker_series),
+            get(biomarkers::series),
         )
         .with_state(state)
         .layer(middleware::from_fn(request_id))
