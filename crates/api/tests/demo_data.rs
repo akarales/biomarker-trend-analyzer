@@ -39,11 +39,9 @@ async fn seeded() -> (axum::Router, Arc<Store>) {
         demo_data: demo_dir(),
         port: 0,
         window_days: 1095,
+        llm: Default::default(),
     };
-    let app = routes::router(AppState {
-        store: store.clone(),
-        config: Arc::new(config),
-    });
+    let app = routes::router(AppState::new(store.clone(), config));
     (app, store)
 }
 

@@ -19,6 +19,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         )
         .init();
 
+    // optional .env (gitignored) for ANTHROPIC_API_KEY & co.
+    let _ = dotenvy::dotenv();
     let config = Config::from_env()?;
     let store = Store::connect(config.store, config.database_url.as_deref()).await?;
 
@@ -52,10 +54,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     let addr = format!("0.0.0.0:{}", config.port);
-    let state = AppState {
-        store: Arc::new(store),
-        config: Arc::new(config),
-    };
+    let state = AppState::new(Arc::new(store), config);
     let app = routes::router(state).layer(TraceLayer::new_for_http());
 
     let listener = tokio::net::TcpListener::bind(&addr).await?;

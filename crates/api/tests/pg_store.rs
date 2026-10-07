@@ -27,17 +27,18 @@ fn fixture() -> Vec<Observation> {
 }
 
 fn app(store: Store) -> axum::Router {
-    routes::router(AppState {
-        store: Arc::new(store),
-        config: Arc::new(Config {
+    routes::router(AppState::new(
+        Arc::new(store),
+        Config {
             store: StoreBackend::Postgres,
             database_url: None,
             seed_demo_data: true,
             demo_data: PathBuf::new(),
             port: 0,
             window_days: 365,
-        }),
-    })
+            llm: Default::default(),
+        },
+    ))
 }
 
 async fn get(app: &axum::Router, path: &str) -> (StatusCode, Value) {

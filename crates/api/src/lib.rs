@@ -3,7 +3,9 @@
 pub mod analysis;
 pub mod config;
 pub mod error;
+pub mod explain;
 pub mod import;
+pub mod llm;
 pub mod request_id;
 pub mod routes;
 pub mod state;

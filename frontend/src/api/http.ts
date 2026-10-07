@@ -13,7 +13,7 @@ export class ApiError extends Error {
   }
 }
 
-async function errorFrom(res: Response): Promise<ApiError> {
+export async function errorFrom(res: Response): Promise<ApiError> {
   const text = await res.text();
   let message = text || res.statusText;
   let code: string | null = null;
@@ -47,7 +47,8 @@ export async function api<S extends z.ZodMiniType>(
   const body = typeof init?.body === 'string' ? init.body : null;
   const res = await fetch(`/api/v1${path}`, {
     ...init,
-    headers: body !== null ? { 'Content-Type': bodyContentType(body) } : undefined,
+    // explicit headers win (JSON requests); else upload bodies are sniffed
+    headers: init?.headers ?? (body !== null ? { 'Content-Type': bodyContentType(body) } : undefined),
   });
   if (!res.ok) throw await errorFrom(res);
   const parsed = schema.safeParse(await res.json());

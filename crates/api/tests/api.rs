@@ -35,11 +35,9 @@ async fn test_app() -> axum::Router {
         demo_data: PathBuf::new(),
         port: 0,
         window_days: 365,
+        llm: Default::default(),
     };
-    routes::router(AppState {
-        store: Arc::new(store),
-        config: Arc::new(config),
-    })
+    routes::router(AppState::new(Arc::new(store), config))
 }
 
 async fn get(path: &str) -> (StatusCode, Value) {

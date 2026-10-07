@@ -138,7 +138,8 @@ pub fn analyze(input: &AnalysisInput) -> DriftReport {
 
 /// Detectors that need biological variation and/or population limits.
 fn personal(report: &mut DriftReport, p: &'static AnalyteProfile, latest: Point) {
-    let unit = report.unit.clone();
+    // prose unit; `report.unit` keeps the UCUM code
+    let unit = crate::fmt::unit(&report.unit);
     let points = &report.points;
     let sigma = p.sigma_log();
     let mut signals: Vec<Signal> = Vec::new();
@@ -228,7 +229,7 @@ fn trend_section(
                 &t,
                 latest,
                 profile.map(|p| p.cvi),
-                &report.unit,
+                &crate::fmt::unit(&report.unit),
                 profile.map_or(report.code.as_str(), |p| p.display),
             ));
             report.trend = Some(t);

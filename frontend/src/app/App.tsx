@@ -1,5 +1,6 @@
 import { BiomarkerCards } from '@/features/biomarker';
 import { TrendPanel } from '@/features/chart';
+import { ExplainPanel } from '@/features/explain';
 import { PatientList } from '@/features/patients';
 import { UploadPanel } from '@/features/upload';
 import { ErrorBanner } from '@/shared/components/ErrorBanner';
@@ -28,6 +29,7 @@ export default function App() {
             <ErrorBanner message={error} />
             <BiomarkerCards />
             <TrendPanel />
+            <ExplainPanel />
           </main>
           <div className="lg:col-start-1 lg:row-start-2 lg:self-start">
             <UploadPanel />

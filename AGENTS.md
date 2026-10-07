@@ -11,7 +11,7 @@ Build, test, and verification commands for the Biomarker Trend Analyzer.
 
 ```bash
 cargo run -p biomarker-api          # serve :8003 (memory store, demo-seeded)
-cargo test --workspace -q           # 89 tests (drift, ingest incl. FHIR, api incl. demo data), no infra
+cargo test --workspace -q           # 107 tests (drift, ingest incl. FHIR, api incl. demo data), no infra
 cargo clippy --workspace --all-targets -- -D warnings   # must be clean
 cargo fmt --check
 cargo audit                         # accepted advisories + reasons: .cargo/audit.toml
@@ -72,14 +72,14 @@ axe `aria-hidden-focus`).
 ```
 frontend/src/
   app/        shell only: App (layout), AppHeader, useUrlSync (?patient=&code=&as_of=&window=)
-  features/   patients (triage) · biomarker (cards) · chart · controls (as-of, window) · upload
+  features/   patients (triage) · biomarker (cards) · chart · controls (as-of, window) · upload · explain
               — each exposes index.ts; other features import ONLY that
   shared/     domain (status, tokens, format), components (StatusChip, ErrorBanner), hooks
   state/      zustand store composed from slices/{patients,biomarker,upload,view}.ts
               + selectors.ts + url.ts; import from @/state
   api/        http (zod/mini-validated) + patients.ts / observations.ts + schemas.ts
   components/ui/  shadcn registry (CLI-owned)
-crates/api/src/  routes/{patients,biomarkers,observations,health}.rs + views.rs,
+crates/api/src/  routes/{patients,biomarkers,observations,health,explain,explain_stream}.rs + views.rs, llm/, explain.rs,
                  analysis.rs (only caller of drift::analyze), triage.rs, import.rs, store/, error.rs
 ```
 
@@ -102,6 +102,18 @@ Rules (`src/test/architecture.test.ts` fails the build on them):
 - every new module gets a test; API responses get a zod schema
 - Rust: JSON shaping lives in `routes/views.rs`; handlers use `?`
   (`From<StoreError> for ApiError`)
+
+## LLM ("explain this drift")
+
+- All model calls go through `crates/api/src/llm/` (ported from app #1:
+  `extract`, `stream`, `ollama`, `anthropic`, `models` copied; `prompts`,
+  `schema`, `stub` are this app's). Tests use the stub and never touch the
+  network (test configs point Ollama at a closed port).
+- The model input is `crates/api/src/explain.rs::context(report)`: computed
+  facts only, **no patient identifier**. The computed status/signals are
+  authoritative: `response_body` overwrites the model's `status` and
+  attaches `signals` — keep that for any new LLM output.
+- Disclaimer on the stream's first line; `done` == the `/explain` body.
 
 ## Demo data (`demo/`, provenance in `demo/PROVENANCE.md`)
 
@@ -130,6 +142,12 @@ uv run --no-project scripts/demo/edge_cases.py demo/edge-cases.json  # hand-made
 | `APP_DEMO_DATA` | `demo` | file or directory of FHIR `*.json` / `*.csv` seeded at startup (see `demo/PROVENANCE.md`) |
 | `APP_WINDOW_DAYS` | `1095` | default trend lookback (per request: `?window_days=`, 7–3650); 3 years suits annual/quarterly labs |
 | `APP_PORT` | `8003` | 8000/8001 taken by ZAP_AGI / app #1 |
+| `APP_LLM_STUB` | `true` | deterministic offline drafts built from the computed report |
+| `APP_LLM_PROVIDER` | `ollama` | `ollama` or `anthropic` (used when stub=false) |
+| `APP_OLLAMA_URL` / `APP_OLLAMA_MODEL` | `http://localhost:11434` / `qwen3:14b` | |
+| `APP_OLLAMA_KEEP_ALIVE` | `2m` | the Ollama instance is SHARED — never pull/delete/configure models, never send reload-forcing options (`num_ctx`) |
+| `APP_ANTHROPIC_MODEL` | `claude-sonnet-5-5` | Messages API + JSON-schema structured output |
+| `ANTHROPIC_API_KEY` | — | only in the gitignored `.env` (loaded at startup via dotenvy) |
 
 ## Conventions
 

@@ -151,6 +151,45 @@ curl 'localhost:8003/api/v1/patients/alice/biomarkers/HBA1C?as_of=2026-08-31'
 same `report`; the chart draws `report.points`, the prRI band from
 `report.baseline`.
 
+## Explain this drift (LLM draft)
+
+`POST /api/v1/explain/stream` streams NDJSON; `POST /api/v1/explain`
+returns the same final body (fallback). Body:
+
+```json
+{ "patient_id": "SYN-01", "code": "HBA1C", "as_of": null, "window_days": 1095,
+  "provider": "stub", "model": "stub" }
+```
+
+`provider`/`model` are optional (server default: the offline stub unless
+`APP_LLM_STUB=false`). The model gets the computed report as text —
+analyte, status, baseline, intervals, thresholds, signals with sources,
+not-assessed reasons, the last 12 results — and **no patient identifier**.
+
+```text
+{"type":"start","patient_id":"SYN-01","code":"HBA1C","computed_status":"alert","provider":"stub","model":"stub","stub":true,"disclaimer":"AI-generated draft, …","as_of":null,"window_days":1095}
+{"type":"delta","field":"summary","text":"Hemoglobin A1c 6.90 % is above …"}      ← repeated (summary, interpretation, follow_up, limitations, status)
+{"type":"done", …start fields, "explanation":{summary, interpretation, follow_up, limitations, status}, "status_overridden":false, "signals":[…], "not_assessed":[…]}
+{"type":"error","code":"llm_upstream","error":"ollama request failed"}           ← instead of done
+```
+
+- The disclaimer arrives on the first line, before any model text.
+- `done` is validated against the schema. Its `explanation.status` is
+  **overwritten with the computed status** (`status_overridden` tells
+  whether the model disagreed), and the computed `signals` are attached.
+  The computed facts are authoritative; the text is a draft.
+- Unknown patient/biomarker (404), bad options or an unavailable model
+  (400) are normal JSON errors **before** the stream starts.
+- When the client disconnects (Stop), the server drops the upstream model
+  request and releases its slot. At most 2 model calls run at a time;
+  others queue.
+
+`GET /api/v1/llm/models` lists the model chooser's options:
+`{default: {provider, model}, providers: [{provider, available, note?,
+models: [{provider, id, label, loaded?, size_gb?}]}]}`. Ollama models are
+discovered read-only (`/api/tags`, `/api/ps`); Claude needs
+`ANTHROPIC_API_KEY`.
+
 ## Errors
 
 Every error body is `{"error": "<message>", "code": "<stable code>"}` —
@@ -164,4 +203,5 @@ is on the server's log lines for that request.
 | `404` | `not_found` | unknown patient / biomarker |
 | `422` | `invalid_fhir` | not JSON, or not a Bundle/Observation |
 | `422` | `invalid_csv` | schema mismatch (header), bad value, bad date (all name the row and column) |
+| `502` | `llm_upstream` | model provider failed (details only in the server log) |
 | `500` | `internal` | store failure (e.g. Postgres down) — details only in the server log |

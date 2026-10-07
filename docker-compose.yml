@@ -29,6 +29,7 @@ services:
       APP_DATABASE_URL: postgresql://app:app@db:5432/biomarkers
       APP_SEED_DEMO: "true"
       APP_DEMO_DATA: /app/demo
+      APP_LLM_STUB: "true"
     volumes:
       - ./demo:/app/demo:ro
     read_only: true

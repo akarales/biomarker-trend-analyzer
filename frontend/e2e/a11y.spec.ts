@@ -35,6 +35,14 @@ test('chart, legend and signals; then the table view', async ({ page }) => {
   expect(await seriousViolations(page)).toEqual([]);
 });
 
+test('streamed explanation draft', async ({ page }) => {
+  await ready(page, '/?patient=EDGE-01&code=TSH');
+  const explain = page.getByRole('region', { name: 'Explain this drift' });
+  await explain.getByRole('button', { name: 'Explain TSH' }).click();
+  await expect(explain.getByRole('button', { name: 'Copy draft' })).toBeVisible();
+  expect(await seriousViolations(page)).toEqual([]);
+});
+
 test('window change and an as-of view', async ({ page }) => {
   await ready(page, '/?patient=EDGE-02&code=CREAT');
   await page.getByRole('combobox', { name: 'Trend window' }).selectOption({ label: '1 year' });

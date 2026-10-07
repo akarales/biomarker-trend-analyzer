@@ -22,7 +22,7 @@
 
 mod detectors;
 mod engine;
-mod fmt;
+pub mod fmt;
 mod model;
 pub mod profiles;
 mod stats;

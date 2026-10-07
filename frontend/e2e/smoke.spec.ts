@@ -41,6 +41,17 @@ test('triage, explained signals, as-of and a shareable view', async ({ page }) =
   await expect(page.getByRole('list', { name: 'Chart legend' })).toContainText('Personal range 5.94–6.43 %');
   await expect(page).toHaveURL(/\?patient=SYN-01&code=HBA1C$/);
 
+  // explain this drift (offline stub through the real streaming pipeline)
+  const explain = page.getByRole('region', { name: 'Explain this drift' });
+  await expect(explain.getByLabel('Model', { exact: true })).toHaveValue('stub::stub');
+  await explain.getByRole('button', { name: 'Explain HBA1C' }).click();
+  const draft = explain.getByRole('article', { name: 'AI draft' });
+  await expect(draft).toContainText('clinician review required');
+  await expect(draft).toHaveAttribute('aria-busy', 'false');
+  await expect(draft.getByRole('region', { name: 'What changed' })).toContainText('diabetes range (ADA ≥ 6.5 %)');
+  await expect(draft).toContainText('Grounded in 4 computed signals');
+  await expect(draft.getByRole('button', { name: 'Copy draft' })).toBeVisible();
+
   // EDGE-01: TSH rising — then as of 2026-03-31 (before the rise) no rule fires
   await openPatient(page, 'EDGE-01');
   await card(page, 'TSH').click();

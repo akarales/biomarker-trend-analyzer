@@ -132,6 +132,36 @@ re-uploading a file reports duplicates instead of doubling the series.
 Store errors are logged and returned as a generic `internal` error — SQL
 text never reaches clients.
 
+## Explain this drift (crates/api/src/llm, routes/explain*.rs)
+
+The pipeline is ported from app #1: one schema-constrained model call,
+streamed. Anthropic streams SSE and Ollama streams NDJSON; both feed a
+partial-JSON field extractor that emits text per field as it arrives,
+which the server re-emits to the browser as NDJSON
+(`start → delta… → done | error`).
+
+- **Grounding.** The model sees only `explain::context(report)`: analyte,
+  computed status, baseline and prRI, CVI/CVA, population interval,
+  thresholds, signals with sources, not-assessed reasons, trend and the
+  last 12 results. It never sees the patient identifier. The prompt
+  forbids re-grading, diagnoses and doses, and asks the model to say
+  "not in this record" when information is missing.
+- **Authority.** `done` is validated against the schema. The model's
+  `status` is overwritten by the engine's (`status_overridden` records any
+  disagreement), and the computed signals are attached. The UI shows
+  "computed status (authoritative)" next to the draft.
+- **Safety UX.** The disclaimer is on the first line. Stop aborts the
+  fetch; the server then drops the upstream request, frees the slot and
+  stops billing. Runs are keyed by patient, biomarker, as-of, window and
+  model, so another series' text can never show. Copy is offered only
+  for the validated draft.
+- **Providers.** The offline stub is the default and restates the
+  computed signals; it streams through the same extractor and validation
+  as a real model. Ollama is a shared instance (read-only discovery,
+  2-minute keep-alive). Claude needs `ANTHROPIC_API_KEY`. A semaphore
+  allows 2 model calls in flight, and a stream holds its permit until it
+  ends.
+
 ## Seeded demo (`demo/`, see `demo/PROVENANCE.md`)
 
 - **`synthea-subset.json`**: 6 patients and 502 results, curated from a
