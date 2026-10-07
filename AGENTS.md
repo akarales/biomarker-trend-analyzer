@@ -11,7 +11,7 @@ Build, test, and verification commands for the Biomarker Trend Analyzer.
 
 ```bash
 cargo run -p biomarker-api          # serve :8003 (memory store, demo-seeded)
-cargo test --workspace -q           # 118 tests (drift, ingest incl. FHIR, api incl. demo data), no infra
+cargo test --workspace -q           # 127 tests (drift, ingest incl. FHIR, api incl. demo data), no infra
 cargo clippy --workspace --all-targets -- -D warnings   # must be clean
 cargo fmt --check
 cargo audit                         # accepted advisories + reasons: .cargo/audit.toml
@@ -77,10 +77,10 @@ frontend/src/
   shared/     domain (status, tokens, format), components (StatusChip, ErrorBanner), hooks
   state/      zustand store composed from slices/{patients,biomarker,upload,view,review}.ts
               + selectors.ts + url.ts; import from @/state
-  api/        http (zod/mini-validated) + patients.ts / observations.ts + schemas.ts
+  api/        http (zod/mini-validated) + patients / observations / reviews / llm clients + schemas.ts, llmSchemas.ts
   components/ui/  shadcn registry (CLI-owned)
 crates/api/src/  routes/{patients,biomarkers,observations,health,explain,explain_stream,reviews}.rs + views.rs, llm/, explain.rs, review.rs, validate.rs,
-                 analysis.rs (only caller of drift::analyze), triage.rs, import.rs, store/, error.rs
+                 analysis.rs + reports.rs (all analyses, derived eGFR), triage.rs, import.rs, store/, error.rs
 ```
 
 Chart (`features/chart/`): pure `scale.ts` (nice ticks, calendar ticks) and
@@ -102,6 +102,19 @@ Rules (`src/test/architecture.test.ts` fails the build on them):
 - every new module gets a test; API responses get a zod schema
 - Rust: JSON shaping lives in `routes/views.rs`; handlers use `?`
   (`From<StoreError> for ApiError`)
+
+## Analyses and derived series
+
+- Every analysis (summary, triage, series, reviews, explanations) goes
+  through `crates/api/src/reports.rs`, so they always agree. Never call
+  `analysis::report` from a route.
+- `EGFR` is derived (`biomarker_drift::egfr`, 2021 CKD-EPI) from `CREAT`
+  plus FHIR Patient gender and birth year (`patient_demographics`,
+  migration 003). It is never uploaded. It must stay labelled as derived
+  (`derived` in the API, a card note, the panel note, the input column).
+- Thresholds in a profile are listed mildest first: on a severity tie the
+  deepest one met is reported (engine `limits.rs` and frontend
+  `thresholdFor` agree).
 
 ## Review workflow (append-only audit)
 

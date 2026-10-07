@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { postExplain, streamExplain } from './llm';
-import type { StreamEvent } from './schemas';
+import type { StreamEvent } from './llmSchemas';
 
 const meta = {
   patient_id: 'alice',

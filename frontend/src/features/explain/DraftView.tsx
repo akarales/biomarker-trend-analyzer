@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Copy } from 'lucide-react';
 
-import { EXPLANATION_FIELDS, type ExplainMeta, type ExplainResponse } from '@/api/schemas';
+import { EXPLANATION_FIELDS, type ExplainMeta, type ExplainResponse } from '@/api/llmSchemas';
 import { Button } from '@/components/ui/button';
 import { StatusChip } from '@/shared/components/StatusChip';
 import { RULE_LABEL } from '@/shared/domain';

@@ -11,7 +11,8 @@
 //! - `effectiveDateTime` (or `effectiveInstant`) must be a full date or a
 //!   date-time with offset; it is stored as naive UTC
 //! - `subject` must reference a Patient (`Patient/<id>` or `urn:uuid:<id>`)
-//! - non-Observation resources (Patient, Condition, …) are ignored
+//! - Patient resources contribute demographics only: administrative
+//!   gender and birth YEAR (for eGFR); other resources are ignored
 
 use chrono::{DateTime, NaiveDate, NaiveDateTime};
 use serde::Deserialize;
@@ -79,10 +80,42 @@ pub struct Skipped {
     pub reason: String,
 }
 
+/// Demographics from a FHIR Patient: only what kidney-function estimation
+/// needs. Names, addresses and identifiers are never read.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PatientInfo {
+    pub patient_id: String,
+    /// administrative gender as recorded (`female`, `male`, `other`, `unknown`)
+    pub gender: Option<String>,
+    pub birth_year: Option<i32>,
+}
+
 #[derive(Debug, Default, PartialEq)]
 pub struct FhirImport {
     pub observations: Vec<Observation>,
     pub skipped: Vec<Skipped>,
+    pub patients: Vec<PatientInfo>,
+}
+
+fn patient_info(resource: &Value) -> Option<PatientInfo> {
+    let patient_id = resource.get("id")?.as_str()?.to_string();
+    let gender = resource
+        .get("gender")
+        .and_then(Value::as_str)
+        .filter(|g| ["female", "male", "other", "unknown"].contains(g))
+        .map(str::to_string);
+    // FHIR date: YYYY, YYYY-MM or YYYY-MM-DD — only the year is kept
+    let birth_year = resource
+        .get("birthDate")
+        .and_then(Value::as_str)
+        .and_then(|d| d.get(..4))
+        .and_then(|y| y.parse().ok())
+        .filter(|y| (1900..=2100).contains(y));
+    Some(PatientInfo {
+        patient_id,
+        gender,
+        birth_year,
+    })
 }
 
 /// Parse a FHIR R4 JSON Bundle (any type) or a single Observation.
@@ -107,8 +140,13 @@ pub fn parse_fhir_json(bytes: &[u8]) -> Result<FhirImport, IngestError> {
 
     let mut out = FhirImport::default();
     for (index, resource) in resources.into_iter().enumerate() {
-        if resource.get("resourceType").and_then(Value::as_str) != Some("Observation") {
-            continue;
+        match resource.get("resourceType").and_then(Value::as_str) {
+            Some("Observation") => {}
+            Some("Patient") => {
+                out.patients.extend(patient_info(&resource));
+                continue;
+            }
+            _ => continue,
         }
         let label = resource.get("id").and_then(Value::as_str).map_or_else(
             || format!("entry[{index}]"),
@@ -310,6 +348,35 @@ mod tests {
             );
             assert_eq!(skipped.resource, "Observation/o1");
         }
+    }
+
+    #[test]
+    fn patients_contribute_gender_and_birth_year_only() {
+        let full = serde_json::json!({ "resourceType": "Patient", "id": "SYN-01", "gender": "female",
+            "birthDate": "1963-04-12", "name": [{ "family": "Never-read" }] });
+        let year_only = serde_json::json!({ "resourceType": "Patient", "id": "SYN-02", "gender": "male", "birthDate": "1948" });
+        let odd = serde_json::json!({ "resourceType": "Patient", "id": "X", "gender": "robot", "birthDate": "18xx" });
+        let out = parse_fhir_json(&bundle(vec![full, year_only, odd])).expect("parse");
+        assert_eq!(
+            out.patients,
+            vec![
+                PatientInfo {
+                    patient_id: "SYN-01".into(),
+                    gender: Some("female".into()),
+                    birth_year: Some(1963)
+                },
+                PatientInfo {
+                    patient_id: "SYN-02".into(),
+                    gender: Some("male".into()),
+                    birth_year: Some(1948)
+                },
+                PatientInfo {
+                    patient_id: "X".into(),
+                    gender: None,
+                    birth_year: None
+                },
+            ]
+        );
     }
 
     #[test]

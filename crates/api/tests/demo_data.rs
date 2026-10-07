@@ -31,6 +31,10 @@ async fn seeded() -> (axum::Router, Arc<Store>) {
             .insert_observations(&parsed.observations)
             .await
             .expect("seed");
+        store
+            .upsert_demographics(&parsed.patients)
+            .await
+            .expect("demographics");
     }
     let config = Config {
         store: StoreBackend::Memory,
@@ -227,4 +231,140 @@ async fn reseeding_the_demo_changes_nothing() {
             .expect("reseed");
         assert_eq!(report.inserted, 0, "{}", file.display());
     }
+}
+
+#[tokio::test]
+async fn egfr_is_derived_from_creatinine_with_fhir_demographics() {
+    let (app, _) = seeded().await;
+
+    // EDGE-02 (male, born 1957): creatinine creep → eGFR into KDIGO G3a
+    let summary = get(&app, "/api/v1/patients/EDGE-02/summary").await;
+    assert_eq!(summary["demographics"]["gender"], "male");
+    assert_eq!(summary["demographics"]["birth_year"], 1957);
+    assert_eq!(summary["derived"]["EGFR"]["from"], "CREAT");
+    let egfr = report(&summary, "EGFR").clone();
+    assert_eq!(egfr["unit"], "mL/min/{1.73_m2}");
+    assert_eq!(
+        egfr["points"].as_array().expect("points").len(),
+        24,
+        "one eGFR per creatinine result"
+    );
+    let threshold = egfr["signals"]
+        .as_array()
+        .expect("signals")
+        .iter()
+        .find(|s| s["rule"] == "threshold")
+        .expect("KDIGO signal");
+    assert!(
+        threshold["explanation"]
+            .as_str()
+            .expect("text")
+            .contains("KDIGO G3a"),
+        "{threshold}"
+    );
+    assert!(
+        threshold["explanation"]
+            .as_str()
+            .expect("text")
+            .contains("mL/min/1.73 m²")
+    );
+    let creat = report(&summary, "CREAT").clone();
+    let note: Vec<&str> = creat["not_assessed"]
+        .as_array()
+        .expect("na")
+        .iter()
+        .filter(|n| n["rule"] == "threshold")
+        .filter_map(|n| n["reason"].as_str())
+        .collect();
+    assert_eq!(
+        note,
+        ["kidney-function categories (KDIGO) are assessed on the derived eGFR series"]
+    );
+
+    // SYN-05 (stable CKD stage 3 in Synthea): personally stable creatinine,
+    // but the eGFR is in G4 — the clinical category now speaks
+    let egfr = report(&get(&app, "/api/v1/patients/SYN-05/summary").await, "EGFR").clone();
+    assert_eq!(egfr["status"], "alert");
+    assert!(
+        egfr["signals"]
+            .as_array()
+            .expect("signals")
+            .iter()
+            .any(|s| s["rule"] == "threshold" && s["severity"] == "alert")
+    );
+
+    // the derived series endpoint returns its inputs + the derivation
+    let series = get(&app, "/api/v1/patients/EDGE-02/biomarkers/EGFR").await;
+    assert_eq!(series["derived"]["from"], "CREAT");
+    assert!(
+        series["derived"]["method"]
+            .as_str()
+            .expect("method")
+            .contains("2021 CKD-EPI")
+    );
+    assert_eq!(series["observations"].as_array().expect("inputs").len(), 24);
+    assert_eq!(series["observations"][0]["unit"], "mg/dL");
+    assert!(get(&app, "/api/v1/patients/EDGE-02/biomarkers/CREAT").await["derived"].is_null());
+}
+
+#[tokio::test]
+async fn derived_egfr_can_be_reviewed_and_explained() {
+    let (app, _) = seeded().await;
+    let series = get(&app, "/api/v1/patients/SYN-05/biomarkers/EGFR").await;
+    let signal = series["report"]["signals"]
+        .as_array()
+        .expect("signals")
+        .iter()
+        .find(|s| s["rule"] == "threshold")
+        .cloned()
+        .expect("KDIGO signal");
+    let post = |path: &str, body: serde_json::Value| {
+        Request::post(path)
+            .header("content-type", "application/json")
+            .body(Body::from(body.to_string()))
+            .expect("request")
+    };
+    let response = app
+        .clone()
+        .oneshot(post(
+            "/api/v1/patients/SYN-05/biomarkers/EGFR/reviews",
+            serde_json::json!({ "rule": "threshold", "t": signal["t"], "action": "acknowledge" }),
+        ))
+        .await
+        .expect("review");
+    assert_eq!(response.status(), StatusCode::CREATED);
+    let after = get(&app, "/api/v1/patients/SYN-05/biomarkers/EGFR").await;
+    let reviewed = after["reviews"]
+        .as_array()
+        .expect("reviews")
+        .iter()
+        .find(|r| r["rule"] == "threshold")
+        .expect("review state");
+    assert_eq!(reviewed["state"], "acknowledged");
+    assert!(
+        after["history"][0]["snapshot"]["signal"]["explanation"]
+            .as_str()
+            .expect("text")
+            .contains("KDIGO G4")
+    );
+
+    let response = app
+        .oneshot(post(
+            "/api/v1/explain",
+            serde_json::json!({ "patient_id": "SYN-05", "code": "EGFR" }),
+        ))
+        .await
+        .expect("explain");
+    assert_eq!(response.status(), StatusCode::OK);
+    let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .expect("body");
+    let body: Value = serde_json::from_slice(&bytes).expect("json");
+    assert_eq!(body["explanation"]["status"], "alert");
+    assert!(
+        body["explanation"]["summary"]
+            .as_str()
+            .expect("summary")
+            .contains("KDIGO G4")
+    );
 }

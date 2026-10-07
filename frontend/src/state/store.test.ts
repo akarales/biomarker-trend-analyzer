@@ -146,6 +146,7 @@ describe('upload slice', () => {
     duplicates: 0,
     skipped: 0,
     skipped_reasons: [],
+    demographics: 0,
     patients: 1,
     biomarkers: ['HBA1C'],
     ...over,

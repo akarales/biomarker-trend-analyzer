@@ -5,7 +5,7 @@
     <a href="https://github.com/akarales/biomarker-trend-analyzer/actions/workflows/ci.yml"><img src="https://github.com/akarales/biomarker-trend-analyzer/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
     <img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT">
     <img src="https://img.shields.io/badge/Rust-1.96-orange?logo=rust" alt="Rust 1.96">
-    <img src="https://img.shields.io/badge/tests-118_rust_·_77_vitest_·_12_e2e-success" alt="tests: 118 Rust, 77 vitest, 12 Playwright">
+    <img src="https://img.shields.io/badge/tests-127_rust_·_80_vitest_·_12_e2e-success" alt="tests: 127 Rust, 80 vitest, 12 Playwright">
     <img src="https://img.shields.io/badge/data-synthetic_(Synthea)-blue" alt="synthetic data (Synthea)">
   </p>
 </p>
@@ -41,6 +41,11 @@ with hand-rolled SVG charts.
   CUSUM (with change point) and EWMA for sustained shifts, Mann–Kendall +
   Sen slope (with CI) for trends, cited clinical thresholds (ADA, ATP III,
   ATA) and population intervals for context
+- **Kidney function staged properly** — eGFR derived per creatinine
+  result with the race-free 2021 CKD-EPI equation from FHIR Patient sex
+  and birth year, analysed like any series with KDIGO G3a–G5 categories
+  (clearly labelled as derived; "not assessed" with the reason when
+  demographics are missing)
 - **Explainable** — every flag is a signal with the rule, the limit, a
   plain-language explanation and its source; "not assessed" says what
   could not be checked; analysis `as_of` an explicit date, units

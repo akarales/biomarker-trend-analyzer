@@ -2,28 +2,14 @@
 
 use axum::Json;
 use axum::extract::{Path, Query, State};
-use biomarker_drift::DriftReport;
 
 use super::views::{PatientTriageView, PatientsView, SummaryView};
-use crate::analysis::{self, AnalysisParams, Options};
+use crate::analysis::AnalysisParams;
 use crate::error::ApiError;
+use crate::reports;
 use crate::review;
 use crate::state::AppState;
 use crate::triage;
-
-/// One drift report per biomarker of a patient (codes in name order).
-async fn reports(
-    state: &AppState,
-    patient_id: &str,
-    options: Options,
-) -> Result<Vec<DriftReport>, ApiError> {
-    let mut out = Vec::new();
-    for code in state.store.patient_codes(patient_id).await? {
-        let series = state.store.series(patient_id, &code).await?;
-        out.extend(analysis::report(&series, &code, options));
-    }
-    Ok(out)
-}
 
 /// Patients worst first (status, alert count, watch count, id). Analyses
 /// every series — N + 1 store calls, fine at demo scale.
@@ -35,7 +21,8 @@ pub async fn list(
     let mut patients = Vec::new();
     for entry in state.store.listing().await? {
         let events = state.store.reviews(&entry.patient_id, None).await?;
-        let triage = triage::triage(&reports(&state, &entry.patient_id, options).await?, &events);
+        let analysis = reports::patient_reports(&state, &entry.patient_id, options).await?;
+        let triage = triage::triage(&analysis.reports, &events);
         patients.push(PatientTriageView { entry, triage });
     }
     patients.sort_by_key(|p| triage::sort_key(&p.triage, &p.entry.patient_id));
@@ -52,7 +39,8 @@ pub async fn summary(
     Query(params): Query<AnalysisParams>,
 ) -> Result<Json<SummaryView>, ApiError> {
     let options = params.options(state.config.window_days)?;
-    let reports = reports(&state, &patient_id, options).await?;
+    let analysis = reports::patient_reports(&state, &patient_id, options).await?;
+    let reports = analysis.reports;
     if reports.is_empty() {
         return Err(ApiError::NotFound(format!(
             "no observations for patient {patient_id}"
@@ -69,5 +57,7 @@ pub async fn summary(
         window_days: options.window_days,
         reports,
         reviews,
+        derived: analysis.derived,
+        demographics: analysis.demographics,
     }))
 }

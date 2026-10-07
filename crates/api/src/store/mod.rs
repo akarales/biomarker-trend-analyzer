@@ -98,6 +98,21 @@ impl Store {
         }
     }
 
+    /// Insert or update demographics (re-importing a Patient corrects them).
+    pub async fn upsert_demographics(&self, rows: &[Demographics]) -> Result<(), StoreError> {
+        match self {
+            Store::Memory(store) => store.upsert_demographics(rows),
+            Store::Postgres(store) => store.upsert_demographics(rows).await,
+        }
+    }
+
+    pub async fn demographics(&self, patient_id: &str) -> Result<Option<Demographics>, StoreError> {
+        match self {
+            Store::Memory(store) => store.demographics(patient_id),
+            Store::Postgres(store) => store.demographics(patient_id).await,
+        }
+    }
+
     /// Distinct biomarker codes observed for a patient.
     pub async fn patient_codes(&self, patient_id: &str) -> Result<Vec<String>, StoreError> {
         match self {
@@ -130,6 +145,26 @@ pub struct PatientSummary {
     pub patient_id: String,
     pub biomarkers: usize,
     pub observations: usize,
+}
+
+/// Gender + birth year of a patient (from FHIR Patient; CSV has none).
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct Demographics {
+    pub patient_id: String,
+    /// administrative gender as recorded: female, male, other, unknown
+    pub gender: Option<String>,
+    pub birth_year: Option<i32>,
+}
+
+impl Demographics {
+    /// The sex the eGFR equation needs (female / male only).
+    pub fn sex(&self) -> Option<biomarker_drift::egfr::Sex> {
+        match self.gender.as_deref() {
+            Some("female") => Some(biomarker_drift::egfr::Sex::Female),
+            Some("male") => Some(biomarker_drift::egfr::Sex::Male),
+            _ => None,
+        }
+    }
 }
 
 /// What a clinician did with a signal.

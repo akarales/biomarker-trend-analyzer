@@ -11,8 +11,9 @@ use biomarker_drift::DriftReport;
 use serde::Deserialize;
 
 use super::views::{HistoryView, ReviewCreatedView};
-use crate::analysis::{self, AnalysisParams};
+use crate::analysis::AnalysisParams;
 use crate::error::ApiError;
+use crate::reports;
 use crate::review;
 use crate::state::AppState;
 use crate::store::{NewReviewEvent, ReviewAction};
@@ -45,9 +46,9 @@ async fn load(
         window_days: req.window_days.map(|w| w.to_string()),
     };
     let options = params.options(state.config.window_days)?;
-    let series = state.store.series(patient_id, code).await?;
-    analysis::report(&series, code, options)
-        .ok_or_else(|| ApiError::NotFound(format!("no observations for {patient_id} / {code}")))
+    Ok(reports::series_report(state, patient_id, code, options)
+        .await?
+        .report)
 }
 
 /// Reason rules: optional for acknowledge, required (3..=500, no

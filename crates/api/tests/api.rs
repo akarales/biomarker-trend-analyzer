@@ -41,8 +41,12 @@ async fn test_app() -> axum::Router {
 }
 
 async fn get(path: &str) -> (StatusCode, Value) {
-    let app = test_app().await;
+    get_from(&test_app().await, path).await
+}
+
+async fn get_from(app: &axum::Router, path: &str) -> (StatusCode, Value) {
     let response = app
+        .clone()
         .oneshot(
             Request::get(path)
                 .body(Body::empty())
@@ -491,4 +495,85 @@ patient_id,code,value,unit,taken_at,source\
     let (status, body) = post_text("/api/v1/observations", bad.to_string()).await;
     assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
     assert!(body["error"].is_string());
+}
+
+#[tokio::test]
+async fn csv_only_patients_say_why_kidney_staging_is_missing() {
+    let app = test_app().await;
+    let (_, summary) = get_from(&app, "/api/v1/patients/alice/summary").await;
+    assert!(summary["demographics"].is_null());
+    let reports = summary["reports"].as_array().expect("reports");
+    assert!(
+        reports.iter().all(|r| r["code"] != "EGFR"),
+        "no eGFR without sex and birth year"
+    );
+    let creat = reports
+        .iter()
+        .find(|r| r["code"] == "CREAT")
+        .expect("creat");
+    let reason = creat["not_assessed"]
+        .as_array()
+        .expect("na")
+        .iter()
+        .find(|n| n["rule"] == "threshold")
+        .and_then(|n| n["reason"].as_str())
+        .expect("reason");
+    assert!(
+        reason.contains("needs the patient's sex and birth year"),
+        "{reason}"
+    );
+    let (status, _) = get_from(&app, "/api/v1/patients/alice/biomarkers/EGFR").await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn fhir_patient_demographics_enable_egfr_and_can_be_corrected() {
+    let app = test_app().await;
+    let bundle = |gender: &str| {
+        let mut entries = vec![serde_json::json!({ "resource": {
+            "resourceType": "Patient", "id": "KID-1", "gender": gender, "birthDate": "1960-06-01" } })];
+        for (i, scr) in [1.0, 1.05, 1.1, 1.2, 1.4, 1.7].iter().enumerate() {
+            entries.push(serde_json::json!({ "resource": {
+                "resourceType": "Observation", "status": "final",
+                "code": { "coding": [{ "system": "http://loinc.org", "code": "2160-0" }] },
+                "subject": { "reference": "Patient/KID-1" },
+                "effectiveDateTime": format!("202{}-03-01", i + 1),
+                "valueQuantity": { "value": scr, "unit": "mg/dL", "system": "http://unitsofmeasure.org", "code": "mg/dL" }
+            }}));
+        }
+        serde_json::json!({ "resourceType": "Bundle", "type": "collection", "entry": entries })
+            .to_string()
+    };
+    let (status, body) = post_typed(
+        &app,
+        "/api/v1/observations",
+        "application/fhir+json",
+        bundle("female"),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    assert_eq!(body["demographics"], 1);
+    let (_, female) = get_from(&app, "/api/v1/patients/KID-1/biomarkers/EGFR").await;
+    let latest_f = female["report"]["latest"]["v"].as_f64().expect("eGFR");
+    // 2026: 66 years, female, Scr 1.7 → CKD-EPI 2021
+    assert!((latest_f - 32.9).abs() < 0.2, "{latest_f}");
+
+    // re-import with a corrected gender: same observations (duplicates), new demographics
+    let (_, body) = post_typed(
+        &app,
+        "/api/v1/observations",
+        "application/fhir+json",
+        bundle("male"),
+    )
+    .await;
+    assert_eq!(
+        (body["inserted"].as_u64(), body["demographics"].as_u64()),
+        (Some(0), Some(1))
+    );
+    let (_, male) = get_from(&app, "/api/v1/patients/KID-1/biomarkers/EGFR").await;
+    assert!(
+        male["report"]["latest"]["v"].as_f64().expect("eGFR") > latest_f,
+        "male eGFR is higher at the same creatinine"
+    );
+    assert_eq!(male["derived"]["gender"], "male");
 }

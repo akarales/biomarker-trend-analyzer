@@ -1,14 +1,6 @@
 import { api, errorFrom } from './http';
 import type { AnalysisOptions } from './patients';
-import {
-  ExplainResponseSchema,
-  ModelsResponseSchema,
-  StreamEventSchema,
-  type ExplainResponse,
-  type LlmProvider,
-  type ModelsResponse,
-  type StreamEvent,
-} from './schemas';
+import { ExplainResponseSchema, ModelsResponseSchema, StreamEventSchema, type ExplainResponse, type LlmProvider, type ModelsResponse, type StreamEvent } from './llmSchemas';
 
 export interface ModelChoice {
   provider: LlmProvider;

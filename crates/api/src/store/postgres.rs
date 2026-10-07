@@ -9,7 +9,10 @@ use chrono::{DateTime, Utc};
 use sqlx::PgPool;
 use sqlx::postgres::PgPoolOptions;
 
-use super::{InsertReport, NewReviewEvent, PatientSummary, ReviewAction, ReviewEvent, StoreError};
+use super::{
+    Demographics, InsertReport, NewReviewEvent, PatientSummary, ReviewAction, ReviewEvent,
+    StoreError,
+};
 
 pub struct PgStore {
     pool: PgPool,
@@ -206,5 +209,43 @@ impl PgStore {
                 })
             })
             .collect()
+    }
+
+    /// One statement per batch; a re-imported Patient overwrites its row.
+    pub async fn upsert_demographics(&self, rows: &[Demographics]) -> Result<(), StoreError> {
+        if rows.is_empty() {
+            return Ok(());
+        }
+        let ids: Vec<String> = rows.iter().map(|r| r.patient_id.clone()).collect();
+        let genders: Vec<Option<String>> = rows.iter().map(|r| r.gender.clone()).collect();
+        let years: Vec<Option<i32>> = rows.iter().map(|r| r.birth_year).collect();
+        sqlx::query!(
+            r#"INSERT INTO patient_demographics (patient_id, gender, birth_year)
+               SELECT * FROM UNNEST($1::text[], $2::text[], $3::int[])
+               ON CONFLICT (patient_id) DO UPDATE
+               SET gender = EXCLUDED.gender, birth_year = EXCLUDED.birth_year, updated_at = now()"#,
+            &ids,
+            &genders as &[Option<String>],
+            &years as &[Option<i32>],
+        )
+        .execute(&self.pool)
+        .await
+        .map_err(db("upsert_demographics"))?;
+        Ok(())
+    }
+
+    pub async fn demographics(&self, patient_id: &str) -> Result<Option<Demographics>, StoreError> {
+        let row = sqlx::query!(
+            "SELECT patient_id, gender, birth_year FROM patient_demographics WHERE patient_id = $1",
+            patient_id,
+        )
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(db("demographics"))?;
+        Ok(row.map(|r| Demographics {
+            patient_id: r.patient_id,
+            gender: r.gender,
+            birth_year: r.birth_year,
+        }))
     }
 }

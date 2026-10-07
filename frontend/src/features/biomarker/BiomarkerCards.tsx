@@ -1,6 +1,13 @@
 import { selectedEntry, unreviewedCount, useAnalyzer } from '@/state';
 
+import type { Demographics } from '@/api/schemas';
+
 import { BiomarkerCard } from './BiomarkerCard';
+
+/** "female, born 1963" (only what is recorded). */
+function describe(d: Demographics): string {
+  return [d.gender, d.birth_year ? `born ${d.birth_year}` : null].filter(Boolean).join(', ');
+}
 
 /** The selected patient's biomarkers. */
 export function BiomarkerCards() {
@@ -9,12 +16,17 @@ export function BiomarkerCards() {
   const selectCode = useAnalyzer((s) => s.selectCode);
   const entry = useAnalyzer(selectedEntry);
   const summaryReviews = useAnalyzer((s) => s.summaryReviews);
+  const summaryDerived = useAnalyzer((s) => s.summaryDerived);
+  const demographics = useAnalyzer((s) => s.demographics);
   if (reports.length === 0) return null;
 
   return (
     <section aria-label="Biomarkers" className="flex flex-col gap-2">
       <h2 className="text-sm font-semibold">
-        {entry?.patient_id ?? 'Patient'} <span className="font-normal text-muted-foreground">· {reports.length} biomarkers</span>
+        {entry?.patient_id ?? 'Patient'}
+        <span className="font-normal text-muted-foreground">
+          {demographics && describe(demographics) && ` · ${describe(demographics)}`} · {reports.length} biomarkers
+        </span>
       </h2>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 2xl:grid-cols-3">
         {reports.map((report) => (
@@ -24,6 +36,7 @@ export function BiomarkerCards() {
             selected={selectedCode === report.code}
             onSelect={(code) => void selectCode(code)}
             unreviewed={unreviewedCount(report, summaryReviews[report.code])}
+            derivedFrom={summaryDerived[report.code]?.from}
           />
         ))}
       </div>

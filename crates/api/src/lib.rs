@@ -6,6 +6,7 @@ pub mod error;
 pub mod explain;
 pub mod import;
 pub mod llm;
+pub mod reports;
 pub mod request_id;
 pub mod review;
 pub mod routes;

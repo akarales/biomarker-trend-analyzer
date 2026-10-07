@@ -19,7 +19,7 @@ export function formatDate(epochSeconds: number): string {
 
 /** UCUM codes as clinicians read them. */
 export function displayUnit(unit: string): string {
-  return unit.replace('m[IU]/L', 'mIU/L').replace('umol/L', 'µmol/L');
+  return unit.replace('m[IU]/L', 'mIU/L').replace('umol/L', 'µmol/L').replace('mL/min/{1.73_m2}', 'mL/min/1.73 m²');
 }
 
 /** "5.94–6.43 %" */

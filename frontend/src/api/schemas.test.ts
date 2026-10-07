@@ -17,7 +17,7 @@ describe('response schemas', () => {
     expect(
       UploadResultSchema.safeParse({
         format: 'fhir', inserted: 1, duplicates: 0, skipped: 1,
-        skipped_reasons: [{ reason: 'no LOINC coding', count: 1 }], patients: 1, biomarkers: ['HBA1C'],
+        skipped_reasons: [{ reason: 'no LOINC coding', count: 1 }], patients: 1, biomarkers: ['HBA1C'], demographics: 1,
       }).success,
     ).toBe(true);
   });

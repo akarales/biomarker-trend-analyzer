@@ -36,6 +36,14 @@ export function TrendPanel() {
         <StatusChip status={report.status} />
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
+        {series.derived && (
+          <p className="rounded-md border border-border bg-muted/40 p-2 text-xs text-muted-foreground">
+            Derived series — not a measured result. {series.derived.method.charAt(0).toUpperCase() + series.derived.method.slice(1)}.
+            Inputs: {series.derived.from} results
+            {series.derived.gender ? `, ${series.derived.gender}` : ''}
+            {series.derived.birth_year ? `, born ${series.derived.birth_year}` : ''}.
+          </p>
+        )}
         <Tabs defaultValue="chart">
           <TabsList aria-label="Trend view">
             <TabsTrigger value="chart">Chart</TabsTrigger>

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 
 import { postExplain, streamExplain, type ExplainTarget, type ModelChoice } from '@/api/llm';
-import type { ExplainMeta, ExplainResponse, ExplanationField } from '@/api/schemas';
+import type { ExplainMeta, ExplainResponse, ExplanationField } from '@/api/llmSchemas';
 
 export type RunStatus = 'streaming' | 'done' | 'stopped' | 'error';
 

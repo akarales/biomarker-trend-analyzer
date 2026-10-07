@@ -78,6 +78,9 @@ const ATP3: &str = "NCEP ATP III, Circulation 2002;106:3143–3421 (LDL-C catego
 const AHA2018: &str = "Grundy SM et al., 2018 AHA/ACC Cholesterol Guideline, Circulation 2019;139:e1082–e1143 \
      (LDL-C ≥ 190 mg/dL: high-intensity statin without risk estimation)";
 
+const KDIGO: &str = "KDIGO 2024 Clinical Practice Guideline for the Evaluation and Management of CKD, \
+     Kidney Int 2024;105(4S):S117–S314 (GFR categories G1–G5; CKD needs abnormality > 3 months)";
+
 const GARBER: &str =
     "Garber JR et al., ATA/AACE hypothyroidism guideline, Thyroid 2012;22:1200–1235";
 const ROSS: &str = "Ross DS et al., ATA hyperthyroidism guideline, Thyroid 2016;26:1343–1421";
@@ -232,9 +235,57 @@ pub static PROFILES: &[AnalyteProfile] = &[
             low: 0.59,
             high: 1.35,
             source: "adult interval spanning female 0.59–1.04 and male 0.74–1.35 mg/dL (Mayo Clinic Laboratories); \
-                     sex-specific limits and KDIGO eGFR staging need age/sex (planned with FHIR Patient import)",
+                     kidney-function staging is on the derived eGFR (KDIGO categories)",
         }),
         thresholds: &[],
+    },
+    // Derived from creatinine + sex + age (crate::egfr); never uploaded.
+    // Thresholds are ordered mildest first: on a tie in severity the
+    // deepest category crossed is reported.
+    AnalyteProfile {
+        code: "EGFR",
+        loinc: &["98979-8"],
+        display: "eGFR (CKD-EPI 2021, creatinine)",
+        unit: "mL/min/{1.73_m2}",
+        unit_aliases: &["mL/min/1.73m2", "mL/min/1.73 m2", "mL/min/{1.73_m2}"],
+        conversions: &[],
+        // ∂ln eGFR / ∂ln Scr = −1.200 above κ, so CV(eGFR) ≈ 1.2 × CV(Scr)
+        cvi: 0.053,
+        cvi_source: "derived: 1.2 × creatinine CVI 4.4 % (EuBIVAS, Clin Chem 2017;63:1527–1536) via the \
+                     CKD-EPI 2021 exponent −1.200 above κ (an upper bound below κ)",
+        cva: 0.024,
+        cva_source: "derived: 1.2 × the assumed creatinine CVA 2 % — replace with the local CVA",
+        population: None,
+        thresholds: &[
+            Threshold {
+                value: 60.0,
+                direction: Direction::Below,
+                severity: Severity::Watch,
+                label: "KDIGO G3a, mildly to moderately decreased (eGFR 45–59) — CKD if persistent > 3 months",
+                source: KDIGO,
+            },
+            Threshold {
+                value: 45.0,
+                direction: Direction::Below,
+                severity: Severity::Watch,
+                label: "KDIGO G3b, moderately to severely decreased (eGFR 30–44)",
+                source: KDIGO,
+            },
+            Threshold {
+                value: 30.0,
+                direction: Direction::Below,
+                severity: Severity::Alert,
+                label: "KDIGO G4, severely decreased (eGFR 15–29)",
+                source: KDIGO,
+            },
+            Threshold {
+                value: 15.0,
+                direction: Direction::Below,
+                severity: Severity::Alert,
+                label: "KDIGO G5, kidney failure (eGFR < 15)",
+                source: KDIGO,
+            },
+        ],
     },
 ];
 

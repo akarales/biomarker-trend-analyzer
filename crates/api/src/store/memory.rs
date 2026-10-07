@@ -5,7 +5,9 @@ use std::sync::Mutex;
 
 use biomarker_ingest::Observation;
 
-use super::{DEMO_ACTOR, InsertReport, NewReviewEvent, PatientSummary, ReviewEvent, StoreError};
+use super::{
+    DEMO_ACTOR, Demographics, InsertReport, NewReviewEvent, PatientSummary, ReviewEvent, StoreError,
+};
 
 #[derive(Default)]
 struct Inner {
@@ -15,6 +17,7 @@ struct Inner {
     patients: BTreeMap<String, Vec<String>>,
     // append-only, in insertion (id) order — no method mutates or removes
     reviews: Vec<ReviewEvent>,
+    demographics: BTreeMap<String, Demographics>,
 }
 
 #[derive(Default)]
@@ -54,6 +57,20 @@ impl MemoryStore {
             .filter(|e| e.patient_id == patient_id && code.is_none_or(|c| e.code == c))
             .cloned()
             .collect())
+    }
+
+    pub fn upsert_demographics(&self, rows: &[Demographics]) -> Result<(), StoreError> {
+        let mut guard = self.lock();
+        for row in rows {
+            guard
+                .demographics
+                .insert(row.patient_id.clone(), row.clone());
+        }
+        Ok(())
+    }
+
+    pub fn demographics(&self, patient_id: &str) -> Result<Option<Demographics>, StoreError> {
+        Ok(self.lock().demographics.get(patient_id).cloned())
     }
 
     fn lock(&self) -> std::sync::MutexGuard<'_, Inner> {

@@ -9,11 +9,12 @@ use biomarker_drift::DriftReport;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-use crate::analysis::{self, AnalysisParams};
+use crate::analysis::AnalysisParams;
 use crate::config::LlmProvider;
 use crate::error::ApiError;
 use crate::explain::{DISCLAIMER, context};
 use crate::llm::{self, Explanation};
+use crate::reports;
 use crate::state::AppState;
 
 #[derive(Debug, Deserialize)]
@@ -43,13 +44,11 @@ pub(super) async fn load_report(
     };
     let options = params.options(state.config.window_days)?;
     let code = request.code.to_uppercase();
-    let series = state.store.series(&request.patient_id, &code).await?;
-    analysis::report(&series, &code, options).ok_or_else(|| {
-        ApiError::NotFound(format!(
-            "no observations for {} / {code}",
-            request.patient_id
-        ))
-    })
+    Ok(
+        reports::series_report(state, &request.patient_id, &code, options)
+            .await?
+            .report,
+    )
 }
 
 /// Provider + model (server defaults when absent), validated against what

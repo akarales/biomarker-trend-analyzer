@@ -13,6 +13,7 @@ use biomarker_ingest::Observation;
 use serde::Serialize;
 
 use crate::error::ApiError;
+use crate::store::Demographics;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
@@ -32,6 +33,8 @@ pub struct Parsed {
     pub format: Format,
     pub observations: Vec<Observation>,
     pub skipped: Vec<SkipReason>,
+    /// FHIR Patient demographics (gender, birth year) for eGFR
+    pub patients: Vec<Demographics>,
 }
 
 impl Parsed {
@@ -74,6 +77,7 @@ pub fn parse(format: Format, body: &[u8]) -> Result<Parsed, ApiError> {
                 format,
                 observations,
                 skipped: Vec::new(),
+                patients: Vec::new(),
             })
         }
         Format::Fhir => {
@@ -102,10 +106,20 @@ pub fn parse(format: Format, body: &[u8]) -> Result<Parsed, ApiError> {
                 .map(|(reason, count)| SkipReason { reason, count })
                 .collect();
             skipped.sort_by(|a, b| b.count.cmp(&a.count).then_with(|| a.reason.cmp(&b.reason)));
+            let patients = import
+                .patients
+                .into_iter()
+                .map(|p| Demographics {
+                    patient_id: p.patient_id,
+                    gender: p.gender,
+                    birth_year: p.birth_year,
+                })
+                .collect();
             Ok(Parsed {
                 format,
                 observations,
                 skipped,
+                patients,
             })
         }
     }

@@ -33,5 +33,6 @@ pub async fn upload(
         .store
         .insert_observations(&parsed.observations)
         .await?;
+    state.store.upsert_demographics(&parsed.patients).await?;
     Ok((StatusCode::CREATED, Json(UploadView::new(report, &parsed))))
 }
