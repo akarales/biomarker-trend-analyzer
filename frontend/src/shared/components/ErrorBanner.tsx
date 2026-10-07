@@ -6,7 +6,7 @@ interface Props {
 export function ErrorBanner({ message }: Props) {
   if (!message) return null;
   return (
-    <p className="rounded border border-red-300 bg-red-50 p-2 text-xs text-red-800">
+    <p role="alert" className="rounded-md border border-destructive/50 bg-destructive/10 p-2 text-xs text-destructive">
       {message}
     </p>
   );

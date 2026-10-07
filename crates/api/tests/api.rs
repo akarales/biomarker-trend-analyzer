@@ -101,6 +101,38 @@ async fn health_reports_memory_store() {
 }
 
 #[tokio::test]
+async fn listing_is_triaged_worst_first_and_honours_as_of() {
+    let (status, body) = get("/api/v1/patients").await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["window_days"], 365);
+    let first = &body["patients"][0];
+    assert_eq!(first["patient_id"], "alice");
+    assert_eq!(first["status"], "alert");
+    assert_eq!(first["alerts"], 1);
+    assert_eq!(first["observations"], 192);
+    assert_eq!(first["top_signal"]["code"], "HBA1C");
+    assert_eq!(first["top_signal"]["severity"], "alert");
+    assert!(
+        first["top_signal"]["explanation"]
+            .as_str()
+            .expect("text")
+            .contains("Hemoglobin A1c")
+    );
+
+    // before alice's step she is not alerting
+    let (_, before) = get("/api/v1/patients?as_of=2026-08-31").await;
+    let alice = before["patients"]
+        .as_array()
+        .expect("patients")
+        .iter()
+        .find(|p| p["patient_id"] == "alice")
+        .expect("alice");
+    assert_ne!(alice["status"], "alert");
+    let (status, _) = get("/api/v1/patients?window_days=2").await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
 async fn patients_listing_has_three() {
     let (status, body) = get("/api/v1/patients").await;
     assert_eq!(status, StatusCode::OK);

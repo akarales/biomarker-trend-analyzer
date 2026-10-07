@@ -16,3 +16,13 @@ export function formatPct(fraction: number): string {
 export function formatDate(epochSeconds: number): string {
   return new Date(epochSeconds * 1000).toISOString().slice(0, 10);
 }
+
+/** UCUM codes as clinicians read them. */
+export function displayUnit(unit: string): string {
+  return unit.replace('m[IU]/L', 'mIU/L').replace('umol/L', 'µmol/L');
+}
+
+/** "5.94–6.43 %" */
+export function formatRange(low: number, high: number, unit: string): string {
+  return `${formatValue(low)}–${formatValue(high)} ${displayUnit(unit)}`;
+}

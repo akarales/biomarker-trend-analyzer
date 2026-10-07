@@ -5,7 +5,7 @@
     <a href="https://github.com/akarales/biomarker-trend-analyzer/actions/workflows/ci.yml"><img src="https://github.com/akarales/biomarker-trend-analyzer/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
     <img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT">
     <img src="https://img.shields.io/badge/Rust-1.96-orange?logo=rust" alt="Rust 1.96">
-    <img src="https://img.shields.io/badge/tests-85%20rust%20%2B%2042%20web-success" alt="tests">
+    <img src="https://img.shields.io/badge/tests-89%20rust%20%2B%2056%20web-success" alt="tests">
     <img src="https://img.shields.io/badge/port-8003-blue" alt="port 8003">
   </p>
 </p>
@@ -48,15 +48,18 @@ hand-rolled SVG trend charts.
   MemoryStore for tests/demos, PgStore (sqlx + startup migrations) for
   runtime; idempotent inserts (re-seeding or re-uploading never
   duplicates results), real-Postgres tests in CI
-- **Zero-dependency charts** — SVG trend chart with the personal
-  reference interval and out-of-range markers, plus a "why this status"
-  panel listing every signal and what was not assessed
+- **Clinician workspace** — triage list (worst first, with the signal
+  behind it), cards showing personal vs population range, a hand-rolled
+  SVG trend chart (axes, personal/population bands, thresholds, RCV jumps,
+  change point, hover + keyboard readout, table alternative), as-of date
+  and trend window in a shareable URL — dark shadcn theme, WCAG 2.2 AA
+  checked with axe in every state
 
 ## 📐 Architecture
 
 ```mermaid
 flowchart TD
-    FE["React 19 + SVG<br/>upload · patients · trends"] -->|"/api/v1"| API["axum 0.8<br/>routes · config"]
+    FE["React 19 + shadcn + SVG<br/>triage · cards · chart · upload"] -->|"/api/v1"| API["axum 0.8<br/>routes · config"]
     API --> ING["biomarker-ingest<br/>FHIR R4 Bundles · polars CSV"]
     API --> ST["Store<br/>Memory | Pg (sqlx + migrations)"]
     API --> DRIFT["biomarker-drift<br/>prRI · RCV · CUSUM/EWMA · Mann–Kendall · thresholds<br/>(pure, no IO, no clock)"]

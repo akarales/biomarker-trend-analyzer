@@ -1,4 +1,6 @@
+export { ChartLegend } from './ChartLegend';
+export { DataTable } from './DataTable';
 export { SignalList } from './SignalList';
 export { TrendChart } from './TrendChart';
 export { TrendPanel } from './TrendPanel';
-export { chartGeometry } from './geometry';
+export { chartLayout } from './geometry';

@@ -78,7 +78,7 @@ describe('biomarker slice', () => {
     await state().selectCode('HBA1C');
     await state().selectPatient('bob');
     expect(patientsApi.fetchSeries).toHaveBeenCalledTimes(1);
-    expect(patientsApi.fetchSeries).toHaveBeenCalledWith('alice', 'HBA1C');
+    expect(patientsApi.fetchSeries).toHaveBeenCalledWith('alice', 'HBA1C', { asOf: null, windowDays: 1095 });
     expect(state().selectedCode).toBeNull();
     expect(state().series).toBeNull();
   });
@@ -92,6 +92,50 @@ describe('biomarker slice', () => {
     slow.resolve(series('alice', 'LDL'));
     await pending;
     expect(state().series).toBeNull();
+  });
+});
+
+describe('view slice and deep links', () => {
+  it('sends the analysis options and re-runs everything on change, keeping the open biomarker', async () => {
+    await state().loadPatients();
+    await state().selectCode('LDL');
+    vi.clearAllMocks();
+    vi.mocked(patientsApi.fetchPatients).mockResolvedValue(patients);
+    vi.mocked(patientsApi.fetchPatientSummary).mockImplementation(async (id) => summary(id));
+    vi.mocked(patientsApi.fetchSeries).mockImplementation(async (id, code) => series(id, code));
+    await state().setAsOf('2026-08-31');
+    const options = { asOf: '2026-08-31', windowDays: 1095 };
+    expect(patientsApi.fetchPatients).toHaveBeenCalledWith(options);
+    expect(patientsApi.fetchPatientSummary).toHaveBeenCalledWith('alice', options);
+    expect(patientsApi.fetchSeries).toHaveBeenCalledWith('alice', 'LDL', options);
+    expect(state().selectedCode).toBe('LDL');
+    expect(state().series?.code).toBe('LDL');
+
+    await state().setWindowDays(365);
+    expect(patientsApi.fetchPatients).toHaveBeenLastCalledWith({ asOf: '2026-08-31', windowDays: 365 });
+    await state().setWindowDays(365);
+    expect(patientsApi.fetchPatients).toHaveBeenCalledTimes(2);
+  });
+
+  it('opens the patient and biomarker from a link, falling back to the worst patient', async () => {
+    await state().loadPatients('bob', 'LDL');
+    expect(state().selectedPatient).toBe('bob');
+    expect(state().selectedCode).toBe('LDL');
+    useAnalyzer.setState(initial, true);
+    await state().loadPatients('ghost', 'LDL');
+    expect(state().selectedPatient).toBe('alice');
+    expect(state().selectedCode).toBeNull();
+  });
+
+  it('drops a summary superseded by a newer request for the same patient', async () => {
+    await state().loadPatients();
+    const slow = deferred<PatientSummary>();
+    vi.mocked(patientsApi.fetchPatientSummary).mockReturnValueOnce(slow.promise);
+    const stale = state().loadSummary('alice', null);
+    await state().loadSummary('alice', null);
+    slow.resolve({ ...summary('alice'), reports: [] });
+    await stale;
+    expect(state().reports).toHaveLength(2);
   });
 });
 

@@ -1,5 +1,3 @@
-import { useEffect } from 'react';
-
 import { BiomarkerCards } from '@/features/biomarker';
 import { TrendPanel } from '@/features/chart';
 import { PatientList } from '@/features/patients';
@@ -8,32 +6,34 @@ import { ErrorBanner } from '@/shared/components/ErrorBanner';
 import { useAnalyzer } from '@/state';
 
 import { AppHeader } from './AppHeader';
+import { useUrlSync } from './useUrlSync';
 
-/** Shell only: layout + initial load; features own their content. */
+/**
+ * Shell only. ≥ lg: triage rail (patients, upload) | workspace. Below lg
+ * the DOM order applies: patients (capped height), workspace, upload.
+ */
 export default function App() {
-  const loadPatients = useAnalyzer((s) => s.loadPatients);
+  useUrlSync();
   const error = useAnalyzer((s) => s.error);
 
-  useEffect(() => {
-    void loadPatients();
-  }, [loadPatients]);
-
   return (
-    <div className="flex h-full flex-col">
-      <AppHeader />
-
-      <main className="grid flex-1 grid-cols-1 gap-4 overflow-y-auto p-4 lg:grid-cols-[1fr_3fr]">
-        <aside className="flex flex-col gap-4">
-          <PatientList />
-          <UploadPanel />
-        </aside>
-
-        <section className="flex flex-col gap-4">
-          <ErrorBanner message={error} />
-          <BiomarkerCards />
-          <TrendPanel />
-        </section>
-      </main>
-    </div>
+    <>
+      <div className="flex min-h-full flex-col">
+        <AppHeader />
+        <div className="grid flex-1 grid-cols-1 content-start gap-4 p-4 lg:grid-cols-[20rem_minmax(0,1fr)]">
+          <div className="max-h-[45vh] overflow-y-auto pr-1 lg:col-start-1 lg:row-start-1 lg:max-h-none">
+            <PatientList />
+          </div>
+          <main className="flex min-w-0 flex-col gap-4 lg:col-start-2 lg:row-span-2 lg:row-start-1">
+            <ErrorBanner message={error} />
+            <BiomarkerCards />
+            <TrendPanel />
+          </main>
+          <div className="lg:col-start-1 lg:row-start-2 lg:self-start">
+            <UploadPanel />
+          </div>
+        </div>
+      </div>
+    </>
   );
 }

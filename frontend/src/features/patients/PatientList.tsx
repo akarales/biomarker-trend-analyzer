@@ -1,35 +1,32 @@
 import { useAnalyzer } from '@/state';
 
-/** Patient listing with counts; clicking selects and loads the summary. */
+import { TriageRow } from './TriageRow';
+
+/** Patients, worst first (status, alerting biomarkers, watch biomarkers). */
 export function PatientList() {
   const patients = useAnalyzer((s) => s.patients);
   const selectedPatient = useAnalyzer((s) => s.selectedPatient);
   const selectPatient = useAnalyzer((s) => s.selectPatient);
 
   return (
-    <section className="rounded-lg border border-line bg-panel p-3">
-      <h2 className="mb-2 text-sm font-semibold">Patients</h2>
-      <ul className="flex flex-col gap-1">
-        {patients.map((patient) => (
-          <li key={patient.patient_id}>
-            <button
-              type="button"
-              onClick={() => void selectPatient(patient.patient_id)}
-              className={`w-full rounded px-2 py-1 text-left text-xs hover:bg-surface ${
-                selectedPatient === patient.patient_id ? 'bg-surface font-semibold' : ''
-              }`}
-            >
-              {patient.patient_id}
-              <span className="ml-2 text-muted">
-                {patient.biomarkers} biomarkers · {patient.observations} readings
-              </span>
-            </button>
-          </li>
-        ))}
-      </ul>
-      {patients.length === 0 && (
-        <p className="text-xs text-muted">No data yet — upload a CSV.</p>
+    <nav aria-label="Patients" className="flex flex-col gap-2">
+      <h2 className="px-1 text-sm font-semibold">
+        Patients <span className="font-normal text-muted-foreground">· worst first</span>
+      </h2>
+      {patients.length === 0 ? (
+        <p className="px-1 text-sm text-muted-foreground">No data yet — upload a CSV or FHIR bundle.</p>
+      ) : (
+        <ul className="flex flex-col gap-1">
+          {patients.map((p) => (
+            <TriageRow
+              key={p.patient_id}
+              patient={p}
+              selected={p.patient_id === selectedPatient}
+              onSelect={(id) => void selectPatient(id)}
+            />
+          ))}
+        </ul>
       )}
-    </section>
+    </nav>
   );
 }

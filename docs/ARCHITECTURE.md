@@ -14,11 +14,23 @@ biomarker-trend-analyzer/
 │   └── migrations/   #   embedded by sqlx::migrate!
 └── frontend/src/
     ├── app/          # shell only: App (layout + initial load), AppHeader
-    ├── features/     # patients · biomarker · chart · upload — each exposes index.ts
+    ├── features/     # patients (triage) · biomarker · chart · controls · upload — each exposes index.ts
     ├── shared/       # domain (status, tokens), components (ErrorBanner)
     ├── state/        # one zustand store from slices (patients, biomarker, upload) + selectors
     └── api/          # http (zod/mini-validated) + per-resource clients + schemas.ts
 ```
+
+**Clinician workspace (M4).** Triage rail (patients worst first, with the
+signal that put them there) → biomarker cards (latest value, personal vs
+population range, trend, deciding rule) → trend panel. The trend panel
+has chart and table tabs: axes, personal and population bands,
+thresholds, RCV jump segments, change point, hover readout, and keyboard
+navigation with a live readout. Below it the signals are listed with
+their sources and the not-assessed reasons. As-of date and trend window
+apply to every view and live in the URL (`?patient=&code=&as_of=&window=`).
+The house style is app #1's dark "Vitals" shadcn theme. axe reports no
+serious or critical WCAG 2.2 AA violation in any tested state, mobile
+included (`e2e/a11y.spec.ts`).
 
 Frontend rules are enforced by `src/test/architecture.test.ts`: ≤ ~300
 lines per file, hex colours only in `shared/domain/tokens.ts`, features

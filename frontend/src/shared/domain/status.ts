@@ -22,11 +22,31 @@ export const RULE_LABEL: Record<Rule, string> = {
   population: 'Population interval',
 };
 
-/** Card surface per status (Tailwind palette classes, light theme). */
-export const STATUS_CARD: Record<string, string> = {
-  alert: 'border-red-300 bg-red-50',
-  watch: 'border-amber-300 bg-amber-50',
-  normal: 'border-emerald-300 bg-emerald-50',
+/** Words shown next to every colour (colour is never the only channel). */
+export const STATUS_LABEL: Record<Status, string> = {
+  alert: 'Alert',
+  watch: 'Watch',
+  normal: 'No rule fired',
 };
 
-export const STATUS_CARD_FALLBACK = 'border-line bg-panel';
+export const SEVERITY_LABEL: Record<Severity, string> = {
+  alert: 'Alert',
+  watch: 'Watch',
+  info: 'Info',
+};
+
+export const TREND_SYMBOL: Record<TrendDirection, string> = {
+  rising: '↑',
+  falling: '↓',
+  flat: '→',
+};
+
+/** Trend lookback choices for the window control (days). */
+export const WINDOW_CHOICES = [
+  { days: 365, label: '1 year' },
+  { days: 1095, label: '3 years' },
+  { days: 1825, label: '5 years' },
+  { days: 3650, label: '10 years' },
+] as const;
+
+export const DEFAULT_WINDOW_DAYS = 1095;

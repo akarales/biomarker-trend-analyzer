@@ -103,14 +103,32 @@ export const DriftReportSchema = z.object({
 });
 export type DriftReport = z.infer<typeof DriftReportSchema>;
 
+/** A triage listing row (crates/api/src/triage.rs), worst first. */
 export const PatientSummaryEntrySchema = z.object({
   patient_id: z.string(),
   biomarkers: z.number(),
   observations: z.number(),
+  status: z.enum(STATUSES),
+  /** biomarkers whose status is alert / watch */
+  alerts: z.number(),
+  watches: z.number(),
+  top_signal: z.nullable(
+    z.object({
+      code: z.string(),
+      display: z.string(),
+      rule: z.enum(RULES),
+      severity: z.enum(SEVERITIES),
+      explanation: z.string(),
+    }),
+  ),
 });
 export type PatientSummaryEntry = z.infer<typeof PatientSummaryEntrySchema>;
 
-export const PatientsResponseSchema = z.object({ patients: z.array(PatientSummaryEntrySchema) });
+export const PatientsResponseSchema = z.object({
+  as_of: z.nullable(z.number()),
+  window_days: z.number(),
+  patients: z.array(PatientSummaryEntrySchema),
+});
 export type PatientsResponse = z.infer<typeof PatientsResponseSchema>;
 
 export const PatientSummarySchema = z.object({

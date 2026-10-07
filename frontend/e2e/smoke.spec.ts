@@ -1,51 +1,64 @@
 import { expect, test, type Page } from '@playwright/test';
 
 /**
- * The core flow on the committed demo data (demo/: Synthea subset +
- * hand-made edge cases, see demo/PROVENANCE.md): first patient
- * auto-selected, signals explained, patient switch, CSV + FHIR upload.
+ * The clinician flow on the committed demo data (demo/PROVENANCE.md):
+ * triage worst-first, explained signals, as-of analysis, shareable URL,
+ * CSV + FHIR upload.
  */
 const PROMPT = 'Select a biomarker card to see its trend.';
+const patient = (page: Page, id: string) =>
+  page.getByRole('navigation', { name: 'Patients' }).getByRole('button', { name: new RegExp(`^${id}(?!\\d)`) });
+const card = (page: Page, code: string) =>
+  page.getByRole('region', { name: 'Biomarkers' }).getByRole('button', { name: new RegExp(`^${code}`) });
 
 async function openPatient(page: Page, id: string) {
-  await page.getByRole('button', { name: new RegExp(`^${id}\\d`) }).click();
+  await patient(page, id).click();
+  await expect(patient(page, id)).toHaveAttribute('aria-current', 'true');
   await expect(page.getByText(PROMPT)).toBeVisible();
   await page.waitForLoadState('networkidle');
 }
 
-test('browse drift cards and explained signals', async ({ page }) => {
+test('triage, explained signals, as-of and a shareable view', async ({ page }) => {
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(String(e)));
 
   await page.goto('/');
   await expect(page.getByRole('heading', { name: 'Biomarker Trend Analyzer' })).toBeVisible();
   await expect(page.getByText('not medical advice')).toBeVisible();
-  await expect(page.getByRole('button', { name: /^EDGE-01\d/ })).toHaveClass(/font-semibold/);
-  await expect(page.getByText(PROMPT)).toBeVisible();
+  // worst first: SYN-01 (3 alerting biomarkers) is opened automatically
+  await expect(patient(page, 'SYN-01')).toHaveAttribute('aria-current', 'true');
+  await expect(patient(page, 'SYN-01')).toContainText('3 alert');
+  await expect(patient(page, 'EDGE-03')).toContainText('No rule fired');
 
-  // EDGE-01: TSH rising on levothyroxine → alert, explained
-  const tsh = page.getByRole('button', { name: /^TSH/ });
-  await expect(tsh).toContainText('alert · Personal reference interval');
-  await tsh.click();
-  await expect(page.getByRole('heading', { name: 'TSH (m[IU]/L) · 10 readings' })).toBeVisible();
-  const signals = page.getByRole('region', { name: 'Signals' });
-  await expect(signals).toContainText("above this patient's personal reference interval");
-  await expect(signals).toContainText('subclinical hypothyroidism range');
-  await expect(signals).toContainText('clinician review required');
-
-  // switching patient with a card selected clears the chart
-  await openPatient(page, 'SYN-01');
-  await expect(page.getByRole('heading', { level: 3 })).toHaveCount(0);
-  const hba1c = page.getByRole('button', { name: /^HBA1C/ });
-  await expect(hba1c).toContainText('alert');
+  const hba1c = card(page, 'HBA1C');
+  await expect(hba1c).toContainText('Alert');
+  await expect(hba1c).toContainText('Why: Personal reference interval');
+  await expect(hba1c).toContainText('Population4.00–5.60 %');
   await hba1c.click();
-  await expect(signals).toContainText('diabetes range (ADA ≥ 6.5 %)');
+  const trend = page.getByRole('region', { name: 'Hemoglobin A1c trend' });
+  await expect(trend.getByRole('heading', { name: 'HBA1C (%) · 13 readings' })).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Signals' })).toContainText('diabetes range (ADA ≥ 6.5 %)');
+  await expect(page.getByRole('list', { name: 'Chart legend' })).toContainText('Personal range 5.94–6.43 %');
+  await expect(page).toHaveURL(/\?patient=SYN-01&code=HBA1C$/);
 
-  // EDGE-02: creatinine in mg/dL and µmol/L, normalised; trend detected
-  await openPatient(page, 'EDGE-02');
-  await page.getByRole('button', { name: /^CREAT/ }).click();
+  // EDGE-01: TSH rising — then as of 2026-03-31 (before the rise) no rule fires
+  await openPatient(page, 'EDGE-01');
+  await card(page, 'TSH').click();
+  await expect(page.getByRole('region', { name: 'Signals' })).toContainText('subclinical hypothyroidism range');
+  const asOf = page.getByLabel('As of');
+  await asOf.fill('2026-03-31');
+  await asOf.press('Enter');
+  await expect(page).toHaveURL(/as_of=2026-03-31/);
+  await expect(card(page, 'TSH')).toContainText('No rule fired');
+  await expect(page.getByRole('region', { name: 'Thyrotropin (TSH) trend' })).toContainText('TSH (mIU/L) · 8 readings');
+  await page.getByRole('button', { name: 'Latest' }).click();
+  await expect(card(page, 'TSH')).toContainText('Alert');
+
+  // a shared link restores patient, biomarker, as-of and window
+  await page.goto('/?patient=EDGE-02&code=CREAT&window=365');
   await expect(page.getByRole('heading', { name: 'CREAT (mg/dL) · 24 readings' })).toBeVisible();
-  await expect(signals).toContainText('Creatinine (serum/plasma) is rising');
+  await expect(page.getByRole('combobox', { name: 'Trend window' })).toHaveValue('365');
+  await expect(page.getByRole('region', { name: 'Signals' })).toContainText('Creatinine (serum/plasma) is rising');
 
   expect(errors).toEqual([]);
 });
@@ -60,42 +73,27 @@ test('upload CSV and FHIR, with duplicates and validation errors', async ({ page
   // a CSV row that duplicates a demo FHIR result (same patient, analyte, time)
   await box.fill('patient_id,code,value,unit,taken_at,source\nEDGE-04,4548-4,6.0,%,2026-09-01T08:30:00,lab');
   await upload.click();
-  await expect(page.getByText(/Inserted 0 observations .* \(1 already stored, skipped\)/)).toBeVisible();
+  await expect(page.getByRole('status')).toContainText(/Inserted 0 observations .* \(1 already stored, skipped\)/);
   await expect(box).toHaveValue('');
 
-  const bundle = {
-    resourceType: 'Bundle',
-    type: 'collection',
-    entry: [
-      {
-        resource: {
-          resourceType: 'Observation',
-          status: 'final',
-          code: { coding: [{ system: 'http://loinc.org', code: '3016-3' }] },
-          subject: { reference: 'Patient/UPLOAD-1' },
-          effectiveDateTime: '2026-09-20T08:00:00Z',
-          valueQuantity: { value: 2.1, unit: 'm[IU]/L', system: 'http://unitsofmeasure.org', code: 'm[IU]/L' },
-        },
-      },
-      {
-        resource: {
-          resourceType: 'Observation',
-          status: 'final',
-          code: { coding: [{ system: 'http://loinc.org', code: '2345-7' }] },
-          subject: { reference: 'Patient/UPLOAD-1' },
-          effectiveDateTime: '2026-09-20T08:00:00Z',
-          valueQuantity: { value: 99, unit: 'mg/dL', system: 'http://unitsofmeasure.org', code: 'mg/dL' },
-        },
-      },
-    ],
-  };
+  const observation = (code: string, value: number, unit: string) => ({
+    resource: {
+      resourceType: 'Observation',
+      status: 'final',
+      code: { coding: [{ system: 'http://loinc.org', code }] },
+      subject: { reference: 'Patient/UPLOAD-1' },
+      effectiveDateTime: '2026-09-20T08:00:00Z',
+      valueQuantity: { value, unit, system: 'http://unitsofmeasure.org', code: unit },
+    },
+  });
+  const bundle = { resourceType: 'Bundle', type: 'collection', entry: [observation('3016-3', 2.1, 'm[IU]/L'), observation('2345-7', 99, 'mg/dL')] };
   await box.fill(JSON.stringify(bundle));
   await upload.click();
-  await expect(page.getByText(/FHIR: inserted 1 observations .*Not imported: 1× no analyte profile for LOINC 2345-7/)).toBeVisible();
-  await expect(page.getByRole('button', { name: /^UPLOAD-1\d/ })).toBeVisible();
+  await expect(page.getByRole('status')).toContainText(/FHIR: inserted 1 observations .*Not imported: 1× no analyte profile for LOINC 2345-7/);
+  await expect(patient(page, 'UPLOAD-1')).toBeVisible();
 
   await box.fill('garbage,header');
   await upload.click();
-  await expect(page.getByText(/csv error: schema mismatch.*\(request [\w-]+\)/)).toBeVisible();
+  await expect(page.getByRole('status')).toContainText(/csv error: schema mismatch.*\(request [\w-]+\)/);
   await expect(box).toHaveValue('garbage,header');
 });

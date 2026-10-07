@@ -56,14 +56,24 @@ already stored (or repeated in the same file) is counted in
 body with nothing importable returns `400`, and the message names the
 most common skip reason.
 
-## Patient listing
+## Patient listing (triage)
 
 ```bash
-curl localhost:8003/api/v1/patients
+curl 'localhost:8003/api/v1/patients?as_of=2026-09-30'
 ```
 
+Every patient is analysed with the same options (analysis parameters
+below) and the list is sorted **worst first**: status, then the number of
+alerting biomarkers, then watch biomarkers, then id. `top_signal` is the
+most severe non-info signal; it is `null` when no rule fired.
+
 ```json
-{ "patients": [ { "patient_id": "alice", "biomarkers": 4, "observations": 192 } ] }
+{ "as_of": 1790812799, "window_days": 1095, "patients": [ {
+  "patient_id": "SYN-01", "biomarkers": 3, "observations": 31,
+  "status": "alert", "alerts": 3, "watches": 0,
+  "top_signal": { "code": "CREAT", "display": "Creatinine (serum/plasma)", "rule": "prri",
+                  "severity": "alert", "explanation": "Creatinine (serum/plasma) 0.70 mg/dL is below …" }
+}, … ] }
 ```
 
 ## Analysis parameters

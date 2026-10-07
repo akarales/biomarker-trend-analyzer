@@ -10,6 +10,7 @@ use serde::Serialize;
 
 use crate::import::{Format, Parsed, SkipReason};
 use crate::store::{InsertReport, PatientSummary};
+use crate::triage::Triage;
 
 #[derive(Serialize)]
 pub struct HealthView {
@@ -18,9 +19,21 @@ pub struct HealthView {
     pub store: &'static str,
 }
 
+/// A listing row: counts + triage, flattened into one JSON object.
+#[derive(Serialize)]
+pub struct PatientTriageView {
+    #[serde(flatten)]
+    pub entry: PatientSummary,
+    #[serde(flatten)]
+    pub triage: Triage,
+}
+
 #[derive(Serialize)]
 pub struct PatientsView {
-    pub patients: Vec<PatientSummary>,
+    pub as_of: Option<i64>,
+    pub window_days: i64,
+    /// worst first
+    pub patients: Vec<PatientTriageView>,
 }
 
 #[derive(Serialize)]

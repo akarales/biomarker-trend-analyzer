@@ -11,7 +11,7 @@ export interface UploadSlice {
   uploadMessage: string | null;
 
   setUploadText(text: string): void;
-  /** Upload the pasted CSV, then refresh the patient listing. */
+  /** Upload the pasted CSV/FHIR, then re-run the visible analyses. */
   upload(): Promise<void>;
 }
 
@@ -41,7 +41,7 @@ export const createUploadSlice: StateCreator<Store, [], [], UploadSlice> = (set,
     try {
       const result = await uploadCsv(text);
       set({ uploadMessage: uploadSummary(result), uploadText: '' });
-      await get().loadPatients();
+      await get().refresh();
     } catch (err) {
       set({ uploadMessage: String(err) });
     }

@@ -11,7 +11,7 @@ Build, test, and verification commands for the Biomarker Trend Analyzer.
 
 ```bash
 cargo run -p biomarker-api          # serve :8003 (memory store, demo-seeded)
-cargo test --workspace -q           # 85 tests (drift, ingest incl. FHIR, api incl. demo data), no infra
+cargo test --workspace -q           # 89 tests (drift, ingest incl. FHIR, api incl. demo data), no infra
 cargo clippy --workspace --all-targets -- -D warnings   # must be clean
 cargo fmt --check
 cargo audit                         # accepted advisories + reasons: .cargo/audit.toml
@@ -46,38 +46,57 @@ pnpm install
 pnpm dev          # :5174 strictPort (5173 is app #1's), proxies /api -> :8003
 pnpm build        # tsc -b + vite build (the type check gate)
 pnpm lint         # oxlint
-pnpm test         # vitest: architecture rules, schemas, http, store, chart geometry, components (jsdom); network mocked
-pnpm e2e          # Playwright: real API (:8093, memory store, demo seed) + production build (:4184)
+pnpm test         # vitest: architecture rules, schemas, http, store, URL state, chart scales/layout/readout, components + chart keyboard (jsdom); network mocked
+pnpm e2e          # Playwright: smoke + a11y (axe WCAG 2.2 AA in every state, keyboard chart, mobile) against the real API (:8093, demo seed) + production build (:4184)
                   # (locally: PW_CHROMIUM_PATH=/usr/bin/google-chrome pnpm e2e)
 ```
 
 Refactor without behaviour change — local screenshot comparison
-(baselines are machine-specific, gitignored in `e2e/__visual__/`):
+(baselines are machine-specific, gitignored in `e2e/__visual__/`). Run the
+visual spec ON ITS OWN (other specs upload data into the shared test API):
 
 ```bash
 PW_VISUAL=1 PW_CHROMIUM_PATH=/usr/bin/google-chrome pnpm e2e visual --update-snapshots   # on the old code
 PW_VISUAL=1 PW_CHROMIUM_PATH=/usr/bin/google-chrome pnpm e2e visual                      # on the new code: 0 px diff
 ```
 
+UI: shadcn (style `radix-nova`, app #1's "Vitals" Catppuccin dark theme in
+`src/index.css`, `<html class="dark">`). `components/ui/` is registry-owned:
+add with `pnpm exec shadcn add <name>` (shadcn 4.21.0 is a pinned devDependency),
+never hand-edit; delete unused ones (no `remove` command). Prefer
+`native-select` over the Radix select (its `aria-hidden` page overlay fails
+axe `aria-hidden-focus`).
+
 ## Code structure (enforced)
 
 ```
 frontend/src/
-  app/        shell only: App (layout + initial load), AppHeader
-  features/   patients · biomarker · chart · upload — each exposes index.ts;
-              other features import ONLY that
-  shared/     domain (status, tokens), components
-  state/      zustand store composed from slices/{patients,biomarker,upload}.ts
-              + selectors.ts; import from @/state
+  app/        shell only: App (layout), AppHeader, useUrlSync (?patient=&code=&as_of=&window=)
+  features/   patients (triage) · biomarker (cards) · chart · controls (as-of, window) · upload
+              — each exposes index.ts; other features import ONLY that
+  shared/     domain (status, tokens, format), components (StatusChip, ErrorBanner), hooks
+  state/      zustand store composed from slices/{patients,biomarker,upload,view}.ts
+              + selectors.ts + url.ts; import from @/state
   api/        http (zod/mini-validated) + patients.ts / observations.ts + schemas.ts
+  components/ui/  shadcn registry (CLI-owned)
 crates/api/src/  routes/{patients,biomarkers,observations,health}.rs + views.rs,
-                 analysis.rs (only caller of drift::analyze), store/, error.rs
+                 analysis.rs (only caller of drift::analyze), triage.rs, import.rs, store/, error.rs
 ```
+
+Chart (`features/chart/`): pure `scale.ts` (nice ticks, calendar ticks) and
+`geometry.ts` (layout at a measured pixel width — text never scales down),
+static `ChartLayers` (aria-hidden SVG), `TrendChart` = one focusable group:
+←/→/Home/End/PageUp/PageDown + hover, polite live readout; `DataTable` is the
+full text alternative (focusable scroll region). Slices drop stale responses
+with request tokens — keep that when adding requests.
 
 Rules (`src/test/architecture.test.ts` fails the build on them):
 - source files ≤ ~300 lines (tests exempt) — split before adding to a long file
-- colours set from TS only from `shared/domain/tokens.ts` (mirrored to CSS as
-  `--status-*`, `--chart-*`); no hex literals elsewhere in .ts/.tsx
+- colours set from TS only from `shared/domain/tokens.ts` (Catppuccin Mocha on
+  the dark card, text ≥ 7:1; mirrored to CSS as `--status-*`, `--severity-*`,
+  `--chart-*`); no hex literals elsewhere in .ts/.tsx; app chrome uses the
+  theme's semantic classes (`bg-card`, `text-muted-foreground`, …)
+- colour is never the only channel: statuses render through `StatusChip` (word + dot)
 - `features/X` imports `@/features/Y` (its index), never `@/features/Y/...`
 - `api/`, `state/`, `shared/` never import `features/` or `app/`
 - every new module gets a test; API responses get a zod schema

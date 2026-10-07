@@ -1,4 +1,4 @@
-import type { BiomarkerSeries, DriftReport, PatientSummary, PatientsResponse, Signal } from '@/api/schemas';
+import type { BiomarkerSeries, DriftReport, PatientSummary, PatientSummaryEntry, PatientsResponse, Signal } from '@/api/schemas';
 
 /** Synthetic API payloads (same shape as crates/drift/src/model.rs). */
 const T0 = Date.UTC(2026, 0, 1) / 1000;
@@ -57,16 +57,33 @@ export function report(code: string, overrides: Partial<DriftReport> = {}): Drif
 
 export const patients: PatientsResponse = {
   patients: [
-    { patient_id: 'alice', biomarkers: 2, observations: 6 },
-    { patient_id: 'bob', biomarkers: 2, observations: 6 },
+    entry('alice', 'alert'),
+    entry('bob', 'normal'),
   ],
+  as_of: null,
+  window_days: 1095,
 };
+
+export function entry(patientId: string, status: PatientSummaryEntry['status'] = 'normal'): PatientSummaryEntry {
+  return {
+    patient_id: patientId,
+    biomarkers: 2,
+    observations: 6,
+    status,
+    alerts: status === 'alert' ? 1 : 0,
+    watches: status === 'watch' ? 1 : 0,
+    top_signal:
+      status === 'normal'
+        ? null
+        : { code: 'HBA1C', display: 'Hemoglobin A1c', rule: 'prri', severity: status, explanation: 'above the personal range' },
+  };
+}
 
 export function summary(patientId: string): PatientSummary {
   return {
     patient_id: patientId,
     as_of: null,
-    window_days: 365,
+    window_days: 1095,
     reports: [report('HBA1C'), report('LDL', { unit: 'mg/dL' })],
   };
 }

@@ -3,11 +3,11 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { ErrorBanner } from '@/shared/components/ErrorBanner';
+import { StatusChip } from '@/shared/components/StatusChip';
 import { useAnalyzer } from '@/state';
-import { report, series } from '@/test/fixtures';
+import { entry, report, series } from '@/test/fixtures';
 
 import { BiomarkerCard } from './biomarker';
-import { SignalList, TrendChart, TrendPanel } from './chart';
 import { PatientList } from './patients';
 import { UploadPanel } from './upload';
 
@@ -18,101 +18,83 @@ afterEach(() => {
   useAnalyzer.setState(initial, true);
 });
 
+describe('StatusChip', () => {
+  it('always carries a word next to the colour', () => {
+    render(<StatusChip status="normal" />);
+    expect(screen.getByText('No rule fired')).toBeTruthy();
+    cleanup();
+    render(<StatusChip severity="info" />);
+    expect(screen.getByText('Info')).toBeTruthy();
+  });
+});
+
 describe('BiomarkerCard', () => {
-  it('shows latest, trend, status and the deciding rule, and selects by code', () => {
+  it('shows latest, personal vs population range, trend and the deciding rule', () => {
     const onSelect = vi.fn();
-    const r = series('alice', 'HBA1C').report;
-    render(<BiomarkerCard report={r} selected onSelect={onSelect} />);
+    render(<BiomarkerCard report={series('alice', 'HBA1C').report} selected onSelect={onSelect} />);
     const card = screen.getByRole('button', { name: /^HBA1C/ });
-    expect(card.textContent).toContain('latest 7.00 · —');
-    expect(card.textContent).toContain('alert · Personal reference interval');
-    expect(card.className).toContain('ring-2');
+    expect(card.getAttribute('aria-pressed')).toBe('true');
+    const text = card.textContent ?? '';
+    expect(text).toContain('7.00 %');
+    expect(text).toContain('Personal5.38–5.82 %');
+    expect(text).toContain('Population4.00–5.60 %');
+    expect(text).toContain('Trendtoo few results');
+    expect(text).toContain('Why: Personal reference interval');
     fireEvent.click(card);
     expect(onSelect).toHaveBeenCalledWith('HBA1C');
   });
 
-  it('renders em dashes for missing values and no rule when nothing fired', () => {
-    render(<BiomarkerCard report={report('TSH', { latest: null })} selected={false} onSelect={() => {}} />);
+  it('says what is missing instead of inventing values', () => {
+    render(
+      <BiomarkerCard
+        report={report('LDL', { latest: null, population: null, unit: 'mg/dL' })}
+        selected={false}
+        onSelect={() => {}}
+      />,
+    );
     const text = screen.getByRole('button').textContent ?? '';
-    expect(text).toContain('latest — · —');
-    expect(text.endsWith('normal')).toBe(true);
+    expect(text).toContain('not yet (needs 3 earlier results)');
+    expect(text).toContain('risk-based targets');
+    expect(text).toContain('No rule fired');
   });
 });
 
-describe('TrendChart', () => {
-  it('titles the chart, labels the prRI band and marks the result outside it', () => {
-    const { container } = render(<TrendChart series={series('alice', 'HBA1C')} />);
-    expect(screen.getByRole('heading', { name: 'HBA1C (%) · 3 readings' })).toBeTruthy();
-    expect(container.querySelectorAll('circle')).toHaveLength(1);
-    expect(screen.getByText('personal range 5.38–5.82')).toBeTruthy();
-    expect(screen.getByText('2026-01-01')).toBeTruthy();
-    expect(screen.getByText('alert')).toBeTruthy();
-  });
-});
-
-describe('SignalList', () => {
-  it('explains each signal with its source and lists what was not assessed', () => {
-    const r = { ...series('alice', 'HBA1C').report, not_assessed: [{ rule: 'trend' as const, reason: 'needs ≥ 4 results' }] };
-    render(<SignalList report={r} />);
-    const region = screen.getByRole('region', { name: 'Signals' });
-    expect(region.textContent).toContain('Personal reference interval · alert');
-    expect(region.textContent).toContain('Source: Coşkun A et al., Clin Chem 2021');
-    expect(region.textContent).toContain('Trend (Mann–Kendall): needs ≥ 4 results');
-    expect(region.textContent).toContain('clinician review required');
-  });
-
-  it('says that no signal is not a clean bill of health', () => {
-    render(<SignalList report={report('LDL')} />);
-    expect(screen.getByText(/not a statement that the result is healthy/)).toBeTruthy();
-  });
-});
-
-describe('TrendPanel', () => {
-  it('prompts until a series is loaded', () => {
-    useAnalyzer.setState({ reports: [report('HBA1C')], series: null });
-    render(<TrendPanel />);
-    expect(screen.getByText('Select a biomarker card to see its trend.')).toBeTruthy();
-  });
-});
-
-describe('PatientList', () => {
-  it('lists patients, bolds the selected one and selects on click', () => {
+describe('PatientList (triage)', () => {
+  it('shows status, counts and the top signal; marks and selects', () => {
     const selectPatient = vi.fn(async () => {});
-    useAnalyzer.setState({
-      patients: [
-        { patient_id: 'alice', biomarkers: 4, observations: 192 },
-        { patient_id: 'bob', biomarkers: 4, observations: 192 },
-      ],
-      selectedPatient: 'alice',
-      selectPatient,
-    });
+    useAnalyzer.setState({ patients: [entry('alice', 'alert'), entry('bob')], selectedPatient: 'alice', selectPatient });
     render(<PatientList />);
-    expect(screen.getByRole('button', { name: /^alice/ }).className).toContain('font-semibold');
+    const nav = screen.getByRole('navigation', { name: 'Patients' });
+    const alice = screen.getByRole('button', { name: /^alice/ });
+    expect(alice.getAttribute('aria-current')).toBe('true');
+    expect(alice.textContent).toContain('Alert');
+    expect(alice.textContent).toContain('1 alert · 2 biomarkers · 6 results');
+    expect(alice.textContent).toContain('Hemoglobin A1c — Personal reference interval');
+    expect(nav.textContent).toContain('no rule fired');
     fireEvent.click(screen.getByRole('button', { name: /^bob/ }));
     expect(selectPatient).toHaveBeenCalledWith('bob');
   });
 
   it('shows the empty state', () => {
     render(<PatientList />);
-    expect(screen.getByText('No data yet — upload a CSV.')).toBeTruthy();
+    expect(screen.getByText('No data yet — upload a CSV or FHIR bundle.')).toBeTruthy();
   });
 });
 
 describe('UploadPanel', () => {
-  it('enables Upload only with text and shows the outcome', () => {
+  it('enables Upload only with text and reports the outcome as a status', () => {
     const upload = vi.fn(async () => {});
-    useAnalyzer.setState({ upload });
+    useAnalyzer.setState({ upload, uploadMessage: 'Inserted 1 observations' });
     render(<UploadPanel />);
     const button = screen.getByRole('button', { name: 'Upload' }) as HTMLButtonElement;
     expect(button.disabled).toBe(true);
-    fireEvent.change(screen.getByRole('textbox'), { target: { value: 'a,b' } });
+    fireEvent.change(screen.getByRole('textbox', { name: 'Lab results (CSV or FHIR JSON)' }), { target: { value: 'a,b' } });
     expect(button.disabled).toBe(false);
     fireEvent.click(button);
     expect(upload).toHaveBeenCalled();
+    expect(screen.getByRole('status').textContent).toBe('Inserted 1 observations');
   });
-});
 
-describe('UploadPanel file loading', () => {
   it('loads a chosen FHIR file into the box', async () => {
     render(<UploadPanel />);
     const input = screen.getByLabelText('Load file…') as HTMLInputElement;
@@ -123,10 +105,10 @@ describe('UploadPanel file loading', () => {
 });
 
 describe('ErrorBanner', () => {
-  it('renders only with a message', () => {
+  it('renders an alert only with a message', () => {
     const { container, rerender } = render(<ErrorBanner message={null} />);
     expect(container.textContent).toBe('');
     rerender(<ErrorBanner message="Error: internal error" />);
-    expect(screen.getByText('Error: internal error')).toBeTruthy();
+    expect(screen.getByRole('alert').textContent).toBe('Error: internal error');
   });
 });
