@@ -9,6 +9,10 @@ lerna-debug.log*
 
 node_modules
 dist
+test-results
+playwright-report
+# machine-specific screenshot baselines (PW_VISUAL=1)
+e2e/__visual__
 dist-ssr
 *.local
 

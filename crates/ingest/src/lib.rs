@@ -1,10 +1,12 @@
-//! biomarker-ingest — parse lab-observation CSV uploads (polars, schema
-//! enforced) into typed `Observation` records.
+//! biomarker-ingest — parse lab-observation uploads into typed `Observation`
+//! records: CSV (polars, schema enforced) and FHIR R4 JSON (`fhir`).
 //!
-//! Schema is declared, never inferred (inference reads twice and drifts);
+//! CSV schema is declared, never inferred (inference reads twice and drifts);
 //! malformed cells are rejected with row context, not silently coerced.
 //! Eager `CsvReader` for in-memory HTTP uploads; the CLI uses lazy
 //! `scan_csv` + `group_by` aggregation for large batch files.
+
+pub mod fhir;
 
 use std::io::Cursor;
 
@@ -15,7 +17,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Observation {
     pub patient_id: String,
-    /// Biomarker code, LOINC-style short form ("HBA1C", "LDL", "TSH", "CREAT").
+    /// Biomarker code: a short code ("HBA1C") or a LOINC code ("4548-4").
     pub code: String,
     pub value: f64,
     pub unit: String,
@@ -33,6 +35,8 @@ pub enum IngestError {
     MissingColumn(String),
     #[error("schema mismatch: expected columns {expected}, got {got}")]
     SchemaMismatch { expected: String, got: String },
+    #[error("fhir error: {0}")]
+    Fhir(String),
 }
 
 fn required_schema() -> Schema {

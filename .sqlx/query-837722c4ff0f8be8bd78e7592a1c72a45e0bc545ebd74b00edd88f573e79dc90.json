@@ -1,0 +1,40 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT patient_id,\n                      COUNT(DISTINCT code) AS \"biomarkers!\",\n                      COUNT(*) AS \"observations!\"\n               FROM observations GROUP BY patient_id ORDER BY patient_id",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "patient_id",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "observations",
+            "name": "patient_id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "biomarkers!",
+        "type_info": "Int8",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 2,
+        "name": "observations!",
+        "type_info": "Int8",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      false,
+      null,
+      null
+    ]
+  },
+  "hash": "837722c4ff0f8be8bd78e7592a1c72a45e0bc545ebd74b00edd88f573e79dc90"
+}

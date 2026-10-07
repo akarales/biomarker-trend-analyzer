@@ -5,38 +5,73 @@ Machine-facing commands live in [AGENTS.md](../AGENTS.md).
 ## Prerequisites
 
 - Rust 1.96, cargo · pnpm 11 / Node 24 (frontend)
-- Docker (only for Postgres mode)
+- Docker (Postgres mode and the full `docker compose up --build` stack)
 
 ## Daily loop
 
 ```bash
 cargo run -p biomarker-api      # :8003, demo-seeded memory store
-cd frontend && pnpm dev         # :5173 → /api proxied
-cargo test --workspace -q      # 24 tests — no Postgres, no network
+cd frontend && pnpm dev         # :5174 (strict) → /api proxied
+cargo test --workspace -q      # 118 tests — no Postgres, no network
 cargo clippy --workspace --all-targets -- -D warnings
+cd frontend && pnpm test && pnpm e2e   # vitest (77) + Playwright smoke, review, a11y (12)
 ```
 
 ## Postgres mode
 
 ```bash
-docker compose up -d db         # pgvector/pgvector:pg17 on :5433
-APP_STORE=postgres APP_DATABASE_URL=postgresql://app:app@localhost:5433/biomarkers \
-  cargo run -p biomarker-api    # migrations run at startup
+docker compose up -d db         # postgres:17-alpine on 127.0.0.1:5435
+APP_STORE=postgres APP_DATABASE_URL=postgresql://app:app@127.0.0.1:5435/biomarkers \
+  cargo run -p biomarker-api    # migrations run at startup; re-seeding is a no-op
 ```
 
-CI never runs a database — the PgStore code compiles, MemoryStore serves
-tests. Live Postgres tests are a roadmap item (skip-if-no-db pattern).
+Real-database tests sit behind the `pg-tests` feature (`#[sqlx::test]`
+creates a fresh database per test); CI runs them in a `postgres` job:
+
+```bash
+DATABASE_URL=postgresql://app:app@127.0.0.1:5435/biomarkers \
+  cargo test -p biomarker-api --features pg-tests --test pg_store
+```
+
+## Demo data
+
+```bash
+scripts/synthea/generate_synthea.sh                                  # ~40 s; byte-identical demo/synthea-subset.json
+uv run --no-project scripts/demo/edge_cases.py demo/edge-cases.json
+uv run --no-project scripts/synthea/select_subset.py .cache/synthea/out/fhir /tmp/c.json --candidates   # every plausible patient, to review a new selection
+```
+
+To change the selection: run with `--candidates`, seed a throwaway API
+(`APP_PORT=8094 APP_DEMO_DATA=/tmp/c.json`), look at the summaries, then
+update `SELECTION` in `select_subset.py`, `demo/PROVENANCE.md` and
+`crates/api/tests/demo_data.rs` together.
+
+Demo GIF (needs the dev servers on :8003 and :5174; restart the API
+afterwards to drop the demo's review event):
+
+```bash
+cd frontend && node scripts/record-demo.mjs   # → docs/demo.gif (~13 s, < 3 MB)
+```
 
 ## Testing notes
 
-- **Drift tests** assert detector semantics, not just math: a step-up
-  must alert via z but NOT report a rising Theil–Sen slope (robust by
-  design); a gradual rise must be caught by the slope instead; a control
-  series must stay normal
+- **Drift tests** assert clinical semantics, not just math:
+  `tests/scenarios.rs` has one test per v1 audit finding (D1–D9) plus
+  outlier-that-reverts, statin start, unknown analyte and empty series;
+  `tests/properties.rs` checks order, time-shift and scale invariance over
+  200 seeded series (deterministic noise, no proptest dependency); unit
+  tests pin the RCV worked example (creatinine +13.4 % / −11.8 %), the
+  EWMA limit at i = 1 (0.6σ) and Mann–Kendall on a monotone series
 - **Ingestion tests** cover header mismatch, bad values, bad dates, and
   lazy group_by stats over a temp file
 - **API tests** upload, list, and read through the real router in-process
   against the seeded fixture
+- **Architecture tests**: `crates/drift/tests/purity.rs` (serde-only, no
+  clock/IO) and `frontend/src/test/architecture.test.ts` (file size, tokens,
+  feature boundaries, layering) — both mutation-checked
+- **Frontend**: store tests mock `@/api/*` and interleave responses with
+  deferred promises (stale summaries/series are dropped); components run
+  in jsdom; e2e runs the real API + production build
 
 ## Gotchas learned here
 
@@ -45,7 +80,25 @@ tests. Live Postgres tests are a roadmap item (skip-if-no-db pattern).
   `PlRefPath`, not a `&str`
 - **sqlx 0.9**: `query_as` turbofish is `<DB, O>` order; the `macros`
   feature is required for `sqlx::migrate!`
-- Port 8002 is taken on this machine — this service runs on 8003
+- **sqlx offline**: after any query/migration change run
+  `cargo sqlx prepare --workspace -- --all-targets --features biomarker-api/pg-tests`
+  against the compose db and commit `.sqlx/`; `COUNT(*)` needs
+  `AS "name!"` to come back non-nullable
+- **Chart time zone (fixed in M2)**: the chart now draws `report.points`
+  (epoch seconds) and `taken_at` is RFC 3339 with `Z`; never parse naive
+  date-time text in the browser (it is read as local time)
+- **sqlx + TIMESTAMPTZ**: decode into `DateTime<Utc>`, never
+  `NaiveDateTime` (v1 shipped that mismatch untested)
+- **Docker glibc**: `rust:1.96-slim` moved to Debian trixie while the
+  runtime stayed on bookworm, so the API image built but did not start
+  (`GLIBC_2.38 not found`). Both stages now name the same release, and the
+  CI `docker` job runs the images
+- **Synthea lab values**: v4.0.0 emits physiologically impossible series
+  (HbA1c 2.4 % for years, creatinine 70 mg/dL, negative LDL, creatinine
+  disagreeing with eGFR, almost no TSH). Never show raw Synthea labs to a
+  clinical audience; filter whole series by rule and curate
+- Port 8002 is taken on this machine — this service runs on 8003;
+  Postgres 5433/5434 belong to other projects — compose uses 5435
 
 ## Conventions
 

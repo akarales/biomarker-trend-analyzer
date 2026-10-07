@@ -1,6 +1,6 @@
 [package]
 name = "biomarker-ingest"
-description = "CSV ingestion for lab observations — polars, schema-enforced"
+description = "Lab observation ingestion — CSV (polars, schema-enforced) and FHIR R4 Bundles"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

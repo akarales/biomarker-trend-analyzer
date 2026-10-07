@@ -1,0 +1,187 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+import * as patientsApi from '@/api/patients';
+import * as observationsApi from '@/api/observations';
+import { ApiError } from '@/api/http';
+import type { BiomarkerSeries, PatientSummary, UploadResult } from '@/api/schemas';
+import { deferred, patients, series, summary } from '@/test/fixtures';
+
+import { showTrendPrompt, uploadSummary, useAnalyzer } from './index';
+
+vi.mock('@/api/patients');
+vi.mock('@/api/observations');
+
+const initial = useAnalyzer.getState();
+const state = () => useAnalyzer.getState();
+
+beforeEach(() => {
+  vi.resetAllMocks();
+  useAnalyzer.setState(initial, true);
+  vi.mocked(patientsApi.fetchPatients).mockResolvedValue(patients);
+  vi.mocked(patientsApi.fetchPatientSummary).mockImplementation(async (id) => summary(id));
+  vi.mocked(patientsApi.fetchSeries).mockImplementation(async (id, code) => series(id, code));
+});
+
+describe('patients slice', () => {
+  it('loads the listing and selects + summarises the first patient', async () => {
+    await state().loadPatients();
+    expect(state().patients).toHaveLength(2);
+    expect(state().selectedPatient).toBe('alice');
+    expect(state().reports.map((r) => r.code)).toEqual(['HBA1C', 'LDL']);
+    expect(showTrendPrompt(state())).toBe(true);
+  });
+
+  it('keeps the selection on reload and does not refetch the summary', async () => {
+    await state().loadPatients();
+    await state().loadPatients();
+    expect(patientsApi.fetchPatientSummary).toHaveBeenCalledTimes(1);
+  });
+
+  it('re-selecting the current patient is a no-op', async () => {
+    await state().loadPatients();
+    await state().selectCode('HBA1C');
+    await state().selectPatient('alice');
+    expect(state().selectedCode).toBe('HBA1C');
+    expect(state().series).not.toBeNull();
+  });
+
+  it('drops a stale summary when a newer patient is selected', async () => {
+    const slow = deferred<PatientSummary>();
+    vi.mocked(patientsApi.fetchPatientSummary).mockImplementation((id) =>
+      id === 'alice' ? slow.promise : Promise.resolve(summary(id)),
+    );
+    const first = state().selectPatient('alice');
+    await state().selectPatient('bob');
+    slow.resolve({ ...summary('alice'), reports: [] });
+    await first;
+    expect(state().selectedPatient).toBe('bob');
+    expect(state().reports).toHaveLength(2);
+  });
+
+  it('shows load errors as the banner text', async () => {
+    vi.mocked(patientsApi.fetchPatients).mockRejectedValue(new ApiError(500, 'internal error', 'internal', 'r-1'));
+    await state().loadPatients();
+    expect(state().error).toBe('Error: internal error');
+  });
+});
+
+describe('biomarker slice', () => {
+  it('loads the selected series', async () => {
+    await state().loadPatients();
+    await state().selectCode('HBA1C');
+    expect(state().series?.code).toBe('HBA1C');
+    expect(showTrendPrompt(state())).toBe(false);
+  });
+
+  it('switching patient never fetches the old code for the new patient (v1 race)', async () => {
+    await state().loadPatients();
+    await state().selectCode('HBA1C');
+    await state().selectPatient('bob');
+    expect(patientsApi.fetchSeries).toHaveBeenCalledTimes(1);
+    expect(patientsApi.fetchSeries).toHaveBeenCalledWith('alice', 'HBA1C', { asOf: null, windowDays: 1095 });
+    expect(state().selectedCode).toBeNull();
+    expect(state().series).toBeNull();
+  });
+
+  it('ignores a series that arrives after the patient changed', async () => {
+    await state().loadPatients();
+    const slow = deferred<BiomarkerSeries>();
+    vi.mocked(patientsApi.fetchSeries).mockReturnValue(slow.promise);
+    const pending = state().selectCode('LDL');
+    await state().selectPatient('bob');
+    slow.resolve(series('alice', 'LDL'));
+    await pending;
+    expect(state().series).toBeNull();
+  });
+});
+
+describe('view slice and deep links', () => {
+  it('sends the analysis options and re-runs everything on change, keeping the open biomarker', async () => {
+    await state().loadPatients();
+    await state().selectCode('LDL');
+    vi.clearAllMocks();
+    vi.mocked(patientsApi.fetchPatients).mockResolvedValue(patients);
+    vi.mocked(patientsApi.fetchPatientSummary).mockImplementation(async (id) => summary(id));
+    vi.mocked(patientsApi.fetchSeries).mockImplementation(async (id, code) => series(id, code));
+    await state().setAsOf('2026-08-31');
+    const options = { asOf: '2026-08-31', windowDays: 1095 };
+    expect(patientsApi.fetchPatients).toHaveBeenCalledWith(options);
+    expect(patientsApi.fetchPatientSummary).toHaveBeenCalledWith('alice', options);
+    expect(patientsApi.fetchSeries).toHaveBeenCalledWith('alice', 'LDL', options);
+    expect(state().selectedCode).toBe('LDL');
+    expect(state().series?.code).toBe('LDL');
+
+    await state().setWindowDays(365);
+    expect(patientsApi.fetchPatients).toHaveBeenLastCalledWith({ asOf: '2026-08-31', windowDays: 365 });
+    await state().setWindowDays(365);
+    expect(patientsApi.fetchPatients).toHaveBeenCalledTimes(2);
+  });
+
+  it('opens the patient and biomarker from a link, falling back to the worst patient', async () => {
+    await state().loadPatients('bob', 'LDL');
+    expect(state().selectedPatient).toBe('bob');
+    expect(state().selectedCode).toBe('LDL');
+    useAnalyzer.setState(initial, true);
+    await state().loadPatients('ghost', 'LDL');
+    expect(state().selectedPatient).toBe('alice');
+    expect(state().selectedCode).toBeNull();
+  });
+
+  it('drops a summary superseded by a newer request for the same patient', async () => {
+    await state().loadPatients();
+    const slow = deferred<PatientSummary>();
+    vi.mocked(patientsApi.fetchPatientSummary).mockReturnValueOnce(slow.promise);
+    const stale = state().loadSummary('alice', null);
+    await state().loadSummary('alice', null);
+    slow.resolve({ ...summary('alice'), reports: [] });
+    await stale;
+    expect(state().reports).toHaveLength(2);
+  });
+});
+
+describe('upload slice', () => {
+  const result = (over: Partial<UploadResult> = {}): UploadResult => ({
+    format: 'csv',
+    inserted: 1,
+    duplicates: 0,
+    skipped: 0,
+    skipped_reasons: [],
+    patients: 1,
+    biomarkers: ['HBA1C'],
+    ...over,
+  });
+
+  it('summarises inserted, duplicate and skipped rows', () => {
+    expect(uploadSummary(result({ inserted: 2, biomarkers: ['HBA1C', 'LDL'] }))).toBe(
+      'Inserted 2 observations across 1 patient(s): HBA1C, LDL',
+    );
+    expect(uploadSummary(result({ inserted: 0, duplicates: 3, biomarkers: ['LDL'] }))).toBe(
+      'Inserted 0 observations across 1 patient(s): LDL (3 already stored, skipped)',
+    );
+    const reasons = ['a', 'b', 'c', 'd'].map((r, i) => ({ reason: `reason ${r}`, count: 4 - i }));
+    expect(uploadSummary(result({ format: 'fhir', skipped: 10, skipped_reasons: reasons }))).toBe(
+      'FHIR: inserted 1 observations across 1 patient(s): HBA1C. Not imported: 4× reason a; 3× reason b; 2× reason c; …',
+    );
+  });
+
+  it('uploads, clears the box and refreshes the listing', async () => {
+    vi.mocked(observationsApi.uploadCsv).mockResolvedValue(result());
+    useAnalyzer.setState({ uploadText: 'csv', error: 'old' });
+    await state().upload();
+    expect(observationsApi.uploadCsv).toHaveBeenCalledWith('csv');
+    expect(state().uploadText).toBe('');
+    expect(state().error).toBeNull();
+    expect(state().uploadMessage).toMatch(/^Inserted 1 observations/);
+    expect(patientsApi.fetchPatients).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the text and shows the error on failure; ignores blank input', async () => {
+    await state().upload();
+    expect(observationsApi.uploadCsv).not.toHaveBeenCalled();
+    vi.mocked(observationsApi.uploadCsv).mockRejectedValue(new ApiError(422, 'csv error: schema mismatch', 'invalid_csv', null));
+    useAnalyzer.setState({ uploadText: 'garbage' });
+    await state().upload();
+    expect(state().uploadText).toBe('garbage');
+    expect(state().uploadMessage).toBe('Error: csv error: schema mismatch');
+  });
+});
