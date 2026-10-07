@@ -30,6 +30,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             match import::parse_file(&file) {
                 Ok(parsed) => {
                     let report = store.insert_observations(&parsed.observations).await?;
+                    store.upsert_demographics(&parsed.patients).await?;
                     tracing::info!(
                         file = %file.display(),
                         format = ?parsed.format,

@@ -24,6 +24,7 @@ export function uploadSummary(result: UploadResult): string {
   return (
     `${result.format === 'fhir' ? 'FHIR: i' : 'I'}nserted ${result.inserted} observations across ${result.patients} patient(s): ${result.biomarkers.join(', ')}` +
     (result.duplicates > 0 ? ` (${result.duplicates} already stored, skipped)` : '') +
+    (result.demographics > 0 ? `; demographics for ${result.demographics} patient(s)` : '') +
     (result.skipped > 0 ? `. Not imported: ${skipped}${result.skipped_reasons.length > 3 ? '; …' : ''}` : '')
   );
 }

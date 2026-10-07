@@ -138,6 +138,23 @@ export type ReviewEvent = z.infer<typeof ReviewEventSchema>;
 export const ReviewCreatedSchema = z.object({ event: ReviewEventSchema, review: SignalReviewSchema });
 export type ReviewCreated = z.infer<typeof ReviewCreatedSchema>;
 
+/** How a derived series (e.g. EGFR from CREAT) was computed. */
+export const DerivedSchema = z.object({
+  from: z.string(),
+  method: z.string(),
+  gender: z.nullable(z.string()),
+  birth_year: z.nullable(z.number()),
+});
+export type Derived = z.infer<typeof DerivedSchema>;
+
+/** FHIR Patient demographics (gender + birth year only). */
+export const DemographicsSchema = z.object({
+  patient_id: z.string(),
+  gender: z.nullable(z.string()),
+  birth_year: z.nullable(z.number()),
+});
+export type Demographics = z.infer<typeof DemographicsSchema>;
+
 /** A triage listing row (crates/api/src/triage.rs), worst first. */
 export const PatientSummaryEntrySchema = z.object({
   patient_id: z.string(),
@@ -177,6 +194,10 @@ export const PatientSummarySchema = z.object({
   reports: z.array(DriftReportSchema),
   /** review status per biomarker code, aligned with each report's signals */
   reviews: z.record(z.string(), z.array(SignalReviewSchema)),
+  /** derived series by code (EGFR) */
+  derived: z.record(z.string(), DerivedSchema),
+  /** null for CSV-only patients */
+  demographics: z.nullable(DemographicsSchema),
 });
 export type PatientSummary = z.infer<typeof PatientSummarySchema>;
 
@@ -185,6 +206,8 @@ export const BiomarkerSeriesSchema = z.object({
   code: z.string(),
   observations: z.array(ObservationSchema),
   report: DriftReportSchema,
+  /** set for a derived series; `observations` are then its inputs (creatinine) */
+  derived: z.nullable(DerivedSchema),
   /** review status of each signal (same order as report.signals) */
   reviews: z.array(SignalReviewSchema),
   /** audit trail, newest first */
@@ -202,77 +225,7 @@ export const UploadResultSchema = z.object({
   skipped_reasons: z.array(z.object({ reason: z.string(), count: z.number() })),
   patients: z.number(),
   biomarkers: z.array(z.string()),
+  /** FHIR Patient demographics stored */
+  demographics: z.number(),
 });
 export type UploadResult = z.infer<typeof UploadResultSchema>;
-
-// ── "Explain this drift" (crates/api/src/routes/explain*.rs) ─────────────
-
-export const LLM_PROVIDERS = ['stub', 'ollama', 'anthropic'] as const;
-export type LlmProvider = (typeof LLM_PROVIDERS)[number];
-
-export const ModelOptionSchema = z.object({
-  provider: z.enum(LLM_PROVIDERS),
-  id: z.string(),
-  label: z.string(),
-  /** Ollama only: already resident in the shared instance */
-  loaded: z.optional(z.boolean()),
-  size_gb: z.optional(z.number()),
-});
-export type ModelOption = z.infer<typeof ModelOptionSchema>;
-
-export const ModelsResponseSchema = z.object({
-  default: z.object({ provider: z.enum(LLM_PROVIDERS), model: z.string() }),
-  providers: z.array(
-    z.object({
-      provider: z.enum(LLM_PROVIDERS),
-      available: z.boolean(),
-      note: z.optional(z.string()),
-      models: z.array(ModelOptionSchema),
-    }),
-  ),
-});
-export type ModelsResponse = z.infer<typeof ModelsResponseSchema>;
-
-/** The computed facts + model identity (first stream line). */
-export const ExplainMetaSchema = z.object({
-  patient_id: z.string(),
-  code: z.string(),
-  as_of: z.nullable(z.number()),
-  window_days: z.number(),
-  computed_status: z.enum(STATUSES),
-  provider: z.enum(LLM_PROVIDERS),
-  model: z.string(),
-  stub: z.boolean(),
-  disclaimer: z.string(),
-});
-export type ExplainMeta = z.infer<typeof ExplainMetaSchema>;
-
-export const EXPLANATION_FIELDS = ['summary', 'interpretation', 'follow_up', 'limitations'] as const;
-export type ExplanationField = (typeof EXPLANATION_FIELDS)[number];
-
-export const ExplanationSchema = z.object({
-  summary: z.string(),
-  interpretation: z.string(),
-  follow_up: z.string(),
-  limitations: z.string(),
-  status: z.enum(STATUSES),
-});
-export type Explanation = z.infer<typeof ExplanationSchema>;
-
-/** Final body (also the non-streaming response): computed status + signals re-asserted. */
-export const ExplainResponseSchema = z.extend(ExplainMetaSchema, {
-  explanation: ExplanationSchema,
-  status_overridden: z.boolean(),
-  signals: z.array(SignalSchema),
-  not_assessed: z.array(z.object({ rule: z.enum(RULES), reason: z.string() })),
-});
-export type ExplainResponse = z.infer<typeof ExplainResponseSchema>;
-
-/** One NDJSON line of POST /explain/stream. */
-export const StreamEventSchema = z.discriminatedUnion('type', [
-  z.extend(ExplainMetaSchema, { type: z.literal('start') }),
-  z.object({ type: z.literal('delta'), field: z.string(), text: z.string() }),
-  z.extend(ExplainResponseSchema, { type: z.literal('done') }),
-  z.object({ type: z.literal('error'), code: z.string(), error: z.string() }),
-]);
-export type StreamEvent = z.infer<typeof StreamEventSchema>;

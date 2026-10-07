@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { RefreshCw } from 'lucide-react';
 
 import { fetchModels, type ModelChoice } from '@/api/llm';
-import type { LlmProvider, ModelsResponse } from '@/api/schemas';
+import type { LlmProvider, ModelsResponse } from '@/api/llmSchemas';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { NativeSelect, NativeSelectOptGroup, NativeSelectOption } from '@/components/ui/native-select';

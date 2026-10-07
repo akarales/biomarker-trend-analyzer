@@ -17,10 +17,12 @@
 //!    "healthy"; `not_assessed` lists what could not be checked and why.
 //!
 //! Biological-variation data, limits and their sources live in
-//! [`profiles`]. No I/O, no clock, serde is the only dependency
+//! [`profiles`]. [`egfr`] derives an eGFR series (2021 CKD-EPI) from
+//! creatinine + sex + birth year, analysed like any other analyte. No I/O, no clock, serde is the only dependency
 //! (enforced by `tests/purity.rs`).
 
 mod detectors;
+pub mod egfr;
 mod engine;
 pub mod fmt;
 mod model;

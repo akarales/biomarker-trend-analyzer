@@ -9,7 +9,7 @@ const { streamExplain, postExplain, fetchModels } = vi.hoisted(() => ({
 }));
 vi.mock('@/api/llm', () => ({ streamExplain, postExplain, fetchModels }));
 
-import type { ExplainResponse, StreamEvent } from '@/api/schemas';
+import type { ExplainResponse, StreamEvent } from '@/api/llmSchemas';
 import { useAnalyzer } from '@/state';
 import { series } from '@/test/fixtures';
 

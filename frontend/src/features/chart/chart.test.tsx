@@ -69,6 +69,24 @@ describe('TrendPanel', () => {
   });
 });
 
+describe('derived series', () => {
+  it('says it is derived, from what and how, and labels the input column', async () => {
+    const derived = {
+      from: 'CREAT',
+      method: 'derived from serum creatinine with the race-free 2021 CKD-EPI creatinine equation',
+      gender: 'male',
+      birth_year: 1957,
+    };
+    const s = { ...series('EDGE-02', 'EGFR'), derived };
+    useAnalyzer.setState({ series: s, reports: [s.report] });
+    render(<TrendPanel />);
+    expect(screen.getByText(/Derived series — not a measured result\. Derived from serum creatinine/)).toBeTruthy();
+    expect(document.body.textContent).toContain('Inputs: CREAT results, male, born 1957.');
+    await userEvent.click(screen.getByRole('tab', { name: 'Table' }));
+    expect(screen.getByRole('columnheader', { name: 'CREAT (input)' })).toBeTruthy();
+  });
+});
+
 describe('ChartLegend', () => {
   it('names every drawn layer with its values', () => {
     const r = series('alice', 'HBA1C').report;

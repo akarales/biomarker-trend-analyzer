@@ -38,11 +38,18 @@ export interface ChartLayout {
   yTicks: { v: number; y: number }[];
 }
 
-/** The most severe threshold a value meets (thresholds: ≥ above / < below). */
+/**
+ * The most severe threshold a value meets (≥ above / < below). Profiles
+ * list thresholds mildest first, so on a tie the LAST one met — the
+ * deepest category (e.g. KDIGO G3b over G3a) — wins, as in the engine.
+ */
 export function thresholdFor(report: DriftReport, v: number): ChartPoint['threshold'] {
   const order: Record<Severity, number> = { info: 0, watch: 1, alert: 2 };
-  const met = report.thresholds.filter((t) => (t.direction === 'above' ? v >= t.value : v < t.value));
-  const worst = met.sort((a, b) => order[b.severity] - order[a.severity])[0];
+  let worst: DriftReport['thresholds'][number] | undefined;
+  for (const t of report.thresholds) {
+    const met = t.direction === 'above' ? v >= t.value : v < t.value;
+    if (met && (!worst || order[t.severity] >= order[worst.severity])) worst = t;
+  }
   return worst ? { label: worst.label, severity: worst.severity } : null;
 }
 

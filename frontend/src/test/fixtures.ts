@@ -87,6 +87,8 @@ export function summary(patientId: string): PatientSummary {
     window_days: 1095,
     reports: [report('HBA1C'), report('LDL', { unit: 'mg/dL' })],
     reviews: {},
+    derived: {},
+    demographics: { patient_id: patientId, gender: 'female', birth_year: 1963 },
   };
 }
 
@@ -112,6 +114,7 @@ export function series(patientId: string, code: string): BiomarkerSeries {
       baseline: { n: 3, from: T0, to: T0 + 31 * DAY, set_point: 5.55, prri_low: 5.38, prri_high: 5.82, level: 0.95 },
       signals: [signal(), signal({ rule: 'threshold', explanation: 'Hemoglobin A1c 7.00 %: diabetes range (ADA ≥ 6.5 %).' })],
     }),
+    derived: null,
     reviews: [unreviewed('prri', T0 + 59 * DAY), unreviewed('threshold', T0 + 59 * DAY)],
     history: [],
   };

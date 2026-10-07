@@ -7,7 +7,7 @@ import { StatusChip } from '@/shared/components/StatusChip';
 import { useAnalyzer } from '@/state';
 import { entry, report, series } from '@/test/fixtures';
 
-import { BiomarkerCard } from './biomarker';
+import { BiomarkerCard, BiomarkerCards } from './biomarker';
 import { PatientList } from './patients';
 import { UploadPanel } from './upload';
 
@@ -54,8 +54,24 @@ describe('BiomarkerCard', () => {
     );
     const text = screen.getByRole('button').textContent ?? '';
     expect(text).toContain('not yet (needs 3 earlier results)');
-    expect(text).toContain('risk-based targets');
+    expect(text).toContain('none in profile');
     expect(text).toContain('No rule fired');
+  });
+});
+
+describe('BiomarkerCards', () => {
+  it('shows demographics in the heading and marks derived series', () => {
+    useAnalyzer.setState({
+      selectedPatient: 'alice',
+      patients: [entry('alice', 'alert')],
+      reports: [report('CREAT', { unit: 'mg/dL' }), report('EGFR', { unit: 'mL/min/{1.73_m2}' })],
+      summaryDerived: { EGFR: { from: 'CREAT', method: 'm', gender: 'female', birth_year: 1963 } },
+      demographics: { patient_id: 'alice', gender: 'female', birth_year: 1963 },
+    });
+    render(<BiomarkerCards />);
+    expect(screen.getByRole('heading', { level: 2 }).textContent).toBe('alice · female, born 1963 · 2 biomarkers');
+    expect(screen.getByRole('button', { name: /^EGFR/ }).textContent).toContain('derived from CREAT');
+    expect(screen.getByRole('button', { name: /^CREAT/ }).textContent).not.toContain('derived from');
   });
 });
 

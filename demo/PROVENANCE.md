@@ -26,7 +26,7 @@ scripts/synthea/generate_synthea.sh
 | Generated | 2026-10-06 |
 
 **What is kept:**
-- A minimal Patient: pseudonymous id, gender, birth **year** only. Synthea's synthetic names, addresses, identifiers and exact birth dates are dropped.
+- A minimal Patient: pseudonymous id, gender, birth **year** only. Gender and birth year feed the derived eGFR (2021 CKD-EPI). Synthea's synthetic names, addresses, identifiers and exact birth dates are dropped.
 - Final lab Observations for the profiled analytes (HbA1c 4548-4, LDL-C 18262-6/13457-7, creatinine 2160-0/38483-4, TSH 3016-3), rounded to laboratory reporting precision, one result per analyte per timestamp.
 
 **Plausibility rules.** Synthea simulates populations, not laboratories, and some of its series are physiologically impossible. Examples from this run: HbA1c 2.4 % for a decade, creatinine 70 mg/dL, negative LDL-C, creatinine 3 mg/dL next to a normal eGFR. A series that fails a rule is dropped **whole**; individual results are never edited or removed:
@@ -56,7 +56,7 @@ uv run --no-project scripts/demo/edge_cases.py demo/edge-cases.json
 | Pseudonym | Scenario | What it exercises |
 |-----------|----------|-------------------|
 | EDGE-01 | treated hypothyroidism, TSH stable ~2.0 for 2 years then 5.6 → 7.4 mIU/L | prRI, shift, TSH subclinical threshold |
-| EDGE-02 | CKD progression: monthly creatinine 1.05 → ~1.6 mg/dL; the last 8 results in µmol/L | UCUM normalisation, Mann–Kendall trend, EWMA |
+| EDGE-02 | CKD progression: monthly creatinine 1.05 → ~1.6 mg/dL; the last 8 results in µmol/L | UCUM normalisation, Mann–Kendall trend, EWMA; derived eGFR (male, born 1957) 76 → 46 = KDIGO G3a |
 | EDGE-03 | stable creatinine, one erroneous 1.94 mg/dL result, two normal repeats; plus an `entered-in-error` duplicate | RCV jumps shown, no shift, quiet latest status; importer skips the bad status |
 | EDGE-04 | two HbA1c results; LDL-C with a six-year gap | "not assessed" (no personal baseline yet), irregular sampling |
 

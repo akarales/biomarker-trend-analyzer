@@ -207,7 +207,7 @@ fn personal(report: &mut DriftReport, p: &'static AnalyteProfile, latest: Point)
         Some(s) => signals.push(s),
         None if p.population.is_none() => skipped.push(not(
             Rule::Population,
-            "no single population interval (targets are risk-based)",
+            "no single population interval for this analyte; the clinical thresholds apply",
         )),
         None => {}
     }

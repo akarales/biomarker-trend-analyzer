@@ -1,4 +1,4 @@
-import { EXPLANATION_FIELDS, type ExplainResponse, type ExplanationField } from '@/api/schemas';
+import { EXPLANATION_FIELDS, type ExplainResponse, type ExplanationField } from '@/api/llmSchemas';
 
 export const FIELD_LABEL: Record<ExplanationField, string> = {
   summary: 'What changed',

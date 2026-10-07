@@ -212,3 +212,41 @@ async fn api_review_works_over_postgres(pool: PgPool) {
             .all(|p| p["unreviewed"].is_u64())
     );
 }
+
+#[sqlx::test(migrations = "./migrations")]
+async fn demographics_upsert_and_round_trip(pool: PgPool) {
+    use biomarker_api::store::Demographics;
+    let store = PgStore::from_pool(pool.clone());
+    let row = |gender: Option<&str>, year: Option<i32>| Demographics {
+        patient_id: "SYN-01".into(),
+        gender: gender.map(str::to_string),
+        birth_year: year,
+    };
+    store
+        .upsert_demographics(&[row(Some("female"), Some(1963))])
+        .await
+        .expect("insert");
+    assert_eq!(
+        store.demographics("SYN-01").await.expect("read"),
+        Some(row(Some("female"), Some(1963)))
+    );
+    store
+        .upsert_demographics(&[row(None, Some(1964))])
+        .await
+        .expect("update");
+    assert_eq!(
+        store.demographics("SYN-01").await.expect("read"),
+        Some(row(None, Some(1964)))
+    );
+    assert_eq!(store.demographics("nobody").await.expect("read"), None);
+    let err =
+        sqlx::query("INSERT INTO patient_demographics (patient_id, gender) VALUES ('X', 'robot')")
+            .execute(&pool)
+            .await
+            .expect_err("gender check");
+    assert!(
+        err.to_string()
+            .contains("patient_demographics_gender_check"),
+        "{err}"
+    );
+}

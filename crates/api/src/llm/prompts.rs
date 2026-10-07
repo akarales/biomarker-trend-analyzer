@@ -11,9 +11,11 @@ interval). `interpretation` lists possible explanations to consider, starting \
 with whether the change exceeds analytical and within-subject biological \
 variation, then pre-analytical factors, then clinical causes, framed as \
 considerations, never as a diagnosis. `follow_up` lists follow-up the \
-clinician may consider (for example confirming with a repeat measurement, \
-reviewing medications or intercurrent illness), framed as considerations for \
-clinical judgement, not orders. `limitations` states what this analysis cannot \
+clinician may consider, limited to confirming the finding (repeat measurement, \
+complementary laboratory tests), monitoring, and gathering missing context \
+(medications, symptoms, intercurrent illness), framed as considerations for \
+clinical judgement, not orders; it never proposes starting, stopping or \
+changing a treatment, and never a dose. `limitations` states what this analysis cannot \
 say: every 'not assessed' item, missing clinical context (medications, \
 symptoms, history are not in this record), and that no signal does not mean \
 healthy. `status` repeats the computed status exactly. \
@@ -34,6 +36,7 @@ mod tests {
             "computed status and signals are authoritative",
             "repeats the computed status exactly",
             "Never give doses",
+            "never proposes starting, stopping or",
             "no signal does not mean healthy",
             "not in this record",
         ] {

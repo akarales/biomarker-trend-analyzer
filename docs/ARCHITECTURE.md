@@ -20,7 +20,7 @@ biomarker-trend-analyzer/
     └── api/          # http (zod/mini-validated) + per-resource clients + schemas.ts
 ```
 
-**Clinician workspace (M4).** Triage rail (patients worst first, with the
+**Clinician workspace.** Triage rail (patients worst first, with the
 signal that put them there) → biomarker cards (latest value, personal vs
 population range, trend, deciding rule) → trend panel. The trend panel
 has chart and table tabs: axes, personal and population bands,
@@ -86,9 +86,28 @@ src/ engine.rs        analyze(): normalise → baseline → detectors → signal
 validated): CVI HbA1c 1.2 % (Adv Lab Med 2020 meta-analysis), LDL-C 7.8 %
 (EFLM BV database), TSH 17.7 % (EuBIVAS, CCLM 2022), creatinine 4.4 %
 (EuBIVAS, Clin Chem 2017). CVA values are **assumed** typical analyser
-imprecision — a deployment must use its laboratory's CVA. Creatinine has
-no thresholds yet: KDIGO staging needs eGFR (age/sex), planned with FHIR
-Patient import. Codes are matched by short code or LOINC.
+imprecision — a deployment must use its laboratory's CVA. Codes are
+matched by short code or LOINC. Creatinine itself has no thresholds;
+kidney function is staged on the derived eGFR (below).
+
+**Derived eGFR** (`egfr.rs` in the drift crate, `crates/api/src/reports.rs`).
+When a patient has creatinine results and a FHIR Patient with sex
+(female/male) and birth year, every creatinine result also yields an eGFR
+through the race-free 2021 CKD-EPI creatinine equation (Inker et al.,
+NEJM 2021; LOINC 98979-8). The `EGFR` series is analysed like any other
+analyte:
+
+- **Variation:** CVI 5.3 % and CVA 2.4 %, both derived as 1.2 × the
+  creatinine values from the equation's −1.200 exponent.
+- **Thresholds:** KDIGO 2024 categories, G3a/G3b `watch` and G4/G5
+  `alert`. On a tie the deepest category crossed is reported.
+
+Limits: age is result year − birth year (only the birth year is stored,
+±1 year ≈ ≤ 0.6 % on eGFR). Adults ≥ 18 only. No eGFR is estimated
+without demographics (CSV-only data) or for a recorded sex other than
+female/male; the creatinine report then says why under "not assessed".
+The derived series is labelled as derived everywhere: card, panel,
+`derived` in the API, and its table shows the creatinine inputs.
 
 What v1 got wrong and the tests that pin it (`tests/scenarios.rs`):
 D1 baseline judged the window it was in · D2 wall clock + future points ·

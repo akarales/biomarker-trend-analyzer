@@ -41,7 +41,7 @@ export function DataTable({ series, label }: Props) {
             <TableHead scope="col" className="text-right">
               Value ({unit})
             </TableHead>
-            <TableHead scope="col">As recorded</TableHead>
+            <TableHead scope="col">{series.derived ? `${series.derived.from} (input)` : 'As recorded'}</TableHead>
             <TableHead scope="col">Flags</TableHead>
           </TableRow>
         </TableHeader>

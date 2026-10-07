@@ -12,9 +12,9 @@ Machine-facing commands live in [AGENTS.md](../AGENTS.md).
 ```bash
 cargo run -p biomarker-api      # :8003, demo-seeded memory store
 cd frontend && pnpm dev         # :5174 (strict) → /api proxied
-cargo test --workspace -q      # 118 tests — no Postgres, no network
+cargo test --workspace -q      # 127 tests — no Postgres, no network
 cargo clippy --workspace --all-targets -- -D warnings
-cd frontend && pnpm test && pnpm e2e   # vitest (77) + Playwright smoke, review, a11y (12)
+cd frontend && pnpm test && pnpm e2e   # vitest (80) + Playwright smoke, review, a11y (12)
 ```
 
 ## Postgres mode

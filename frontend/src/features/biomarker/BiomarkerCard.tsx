@@ -19,6 +19,8 @@ interface Props {
   onSelect(code: string): void;
   /** watch/alert signals still awaiting review */
   unreviewed?: number;
+  /** code of the measured series this one is derived from (EGFR ← CREAT) */
+  derivedFrom?: string;
 }
 
 function Row({ label, value }: { label: string; value: string }) {
@@ -31,7 +33,7 @@ function Row({ label, value }: { label: string; value: string }) {
 }
 
 /** One biomarker: latest result, personal vs population range, trend and the rule behind the status. */
-export function BiomarkerCard({ report, selected, onSelect, unreviewed = 0 }: Props) {
+export function BiomarkerCard({ report, selected, onSelect, unreviewed = 0, derivedFrom }: Props) {
   const top = report.signals.find((s) => s.severity !== 'info');
   const unit = report.unit;
   const trend = report.trend;
@@ -50,6 +52,7 @@ export function BiomarkerCard({ report, selected, onSelect, unreviewed = 0 }: Pr
         <span>
           <span className="block font-semibold">{report.code}</span>
           <span className="block text-xs text-muted-foreground">{report.analyte?.display ?? 'no analyte profile'}</span>
+          {derivedFrom && <span className="block text-xs text-muted-foreground">derived from {derivedFrom}</span>}
         </span>
         <StatusChip status={report.status} />
       </span>
@@ -59,7 +62,7 @@ export function BiomarkerCard({ report, selected, onSelect, unreviewed = 0 }: Pr
       </span>
       <dl className="flex flex-col gap-0.5 text-xs">
         <Row label="Personal" value={report.baseline ? formatRange(report.baseline.prri_low, report.baseline.prri_high, unit) : 'not yet (needs 3 earlier results)'} />
-        <Row label="Population" value={report.population ? formatRange(report.population.low, report.population.high, unit) : 'risk-based targets'} />
+        <Row label="Population" value={report.population ? formatRange(report.population.low, report.population.high, unit) : report.thresholds.length ? 'see clinical thresholds' : 'none in profile'} />
         <Row
           label="Trend"
           value={trend ? `${TREND_SYMBOL[trend.direction]} ${trend.direction}${trend.direction !== 'flat' ? ` ${formatPct(trend.change_per_year)}/yr` : ''}` : 'too few results'}

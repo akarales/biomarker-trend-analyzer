@@ -27,7 +27,7 @@ test('triage, explained signals, as-of and a shareable view', async ({ page }) =
   await expect(page.getByText('not medical advice')).toBeVisible();
   // worst first: SYN-01 (3 alerting biomarkers) is opened automatically
   await expect(patient(page, 'SYN-01')).toHaveAttribute('aria-current', 'true');
-  await expect(patient(page, 'SYN-01')).toContainText('3 alert');
+  await expect(patient(page, 'SYN-01')).toContainText('4 alert');
   await expect(patient(page, 'EDGE-03')).toContainText('No rule fired');
 
   const hba1c = card(page, 'HBA1C');
@@ -70,6 +70,15 @@ test('triage, explained signals, as-of and a shareable view', async ({ page }) =
   await expect(page.getByRole('heading', { name: 'CREAT (mg/dL) · 24 readings' })).toBeVisible();
   await expect(page.getByRole('combobox', { name: 'Trend window' })).toHaveValue('365');
   await expect(page.getByRole('region', { name: 'Signals' })).toContainText('Creatinine (serum/plasma) is rising');
+  await expect(page.getByRole('region', { name: 'Signals' })).toContainText('assessed on the derived eGFR series');
+
+  // the derived eGFR (CKD-EPI 2021 from creatinine + FHIR sex/birth year) lands in KDIGO G3a
+  const egfr = card(page, 'EGFR');
+  await expect(egfr).toContainText('derived from CREAT');
+  await egfr.click();
+  await expect(page.getByText(/Derived series — not a measured result/)).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Signals' })).toContainText('KDIGO G3a');
+  await expect(page.getByRole('region', { name: 'Biomarkers' }).getByRole('heading', { level: 2 })).toContainText('male, born 1957');
 
   expect(errors).toEqual([]);
 });

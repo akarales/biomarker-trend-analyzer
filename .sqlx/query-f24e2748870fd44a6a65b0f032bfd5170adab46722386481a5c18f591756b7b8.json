@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO patient_demographics (patient_id, gender, birth_year)\n               SELECT * FROM UNNEST($1::text[], $2::text[], $3::int[])\n               ON CONFLICT (patient_id) DO UPDATE\n               SET gender = EXCLUDED.gender, birth_year = EXCLUDED.birth_year, updated_at = now()",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "TextArray",
+        "TextArray",
+        "Int4Array"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "f24e2748870fd44a6a65b0f032bfd5170adab46722386481a5c18f591756b7b8"
+}

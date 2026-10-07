@@ -9,8 +9,9 @@ use biomarker_ingest::Observation;
 use serde::Serialize;
 
 use crate::import::{Format, Parsed, SkipReason};
+use crate::reports::Derived;
 use crate::review::SignalReview;
-use crate::store::{InsertReport, PatientSummary, ReviewEvent};
+use crate::store::{Demographics, InsertReport, PatientSummary, ReviewEvent};
 use crate::triage::Triage;
 
 #[derive(Serialize)]
@@ -46,6 +47,10 @@ pub struct SummaryView {
     pub reports: Vec<DriftReport>,
     /// review status per biomarker code, aligned with each report's `signals`
     pub reviews: BTreeMap<String, Vec<SignalReview>>,
+    /// how each derived series (e.g. EGFR) was computed, by code
+    pub derived: BTreeMap<String, Derived>,
+    /// gender + birth year from FHIR Patient (null for CSV-only patients)
+    pub demographics: Option<Demographics>,
 }
 
 /// A stored observation as recorded (original unit; the report's `points`
@@ -79,6 +84,8 @@ pub struct SeriesView {
     pub code: String,
     pub observations: Vec<ObservationView>,
     pub report: DriftReport,
+    /// set for a derived series; `observations` are then its inputs
+    pub derived: Option<Derived>,
     /// review status of each signal (same order as `report.signals`)
     pub reviews: Vec<SignalReview>,
     /// the biomarker's review audit trail, newest first
@@ -111,6 +118,8 @@ pub struct UploadView {
     pub skipped_reasons: Vec<SkipReason>,
     pub patients: usize,
     pub biomarkers: BTreeSet<String>,
+    /// FHIR Patient demographics stored (gender + birth year, for eGFR)
+    pub demographics: usize,
 }
 
 impl UploadView {
@@ -125,6 +134,7 @@ impl UploadView {
             skipped_reasons: parsed.skipped.clone(),
             patients: patients.len(),
             biomarkers: observations.iter().map(|o| o.code.clone()).collect(),
+            demographics: parsed.patients.len(),
         }
     }
 }

@@ -32,7 +32,9 @@ pub fn value(v: f64) -> String {
 /// A UCUM unit code as clinicians read it in prose (`m[IU]/L` → `mIU/L`,
 /// `umol/L` → `µmol/L`); report fields keep the UCUM code.
 pub fn unit(ucum: &str) -> String {
-    ucum.replace("m[IU]/L", "mIU/L").replace("umol/L", "µmol/L")
+    ucum.replace("m[IU]/L", "mIU/L")
+        .replace("umol/L", "µmol/L")
+        .replace("mL/min/{1.73_m2}", "mL/min/1.73 m²")
 }
 
 /// A fraction as a signed percentage, e.g. `+12.3 %`.
@@ -67,5 +69,6 @@ mod tests {
         assert_eq!(unit("m[IU]/L"), "mIU/L");
         assert_eq!(unit("umol/L"), "µmol/L");
         assert_eq!(unit("mg/dL"), "mg/dL");
+        assert_eq!(unit("mL/min/{1.73_m2}"), "mL/min/1.73 m²");
     }
 }

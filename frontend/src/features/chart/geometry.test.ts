@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { report, series } from '@/test/fixtures';
 
-import { chartLayout, HEIGHT, MARGIN, nearestIndex } from './geometry';
+import { chartLayout, HEIGHT, MARGIN, nearestIndex, thresholdFor } from './geometry';
 import { pointFlags, readoutText } from './readout';
 import { niceTicks, timeTicks } from './scale';
 
@@ -90,6 +90,21 @@ describe('chartLayout', () => {
   it('finds the nearest point to a pixel', () => {
     expect(nearestIndex(layout.points, 0)).toBe(0);
     expect(nearestIndex(layout.points, 10_000)).toBe(2);
+  });
+});
+
+describe('thresholdFor', () => {
+  it('reports the deepest category on a severity tie (as the engine does)', () => {
+    const kdigo = (value: number, severity: 'watch' | 'alert', label: string) =>
+      ({ value, direction: 'below' as const, severity, label, source: 'KDIGO' });
+    const r = report('EGFR', {
+      thresholds: [kdigo(60, 'watch', 'G3a'), kdigo(45, 'watch', 'G3b'), kdigo(30, 'alert', 'G4'), kdigo(15, 'alert', 'G5')],
+    });
+    expect(thresholdFor(r, 50)?.label).toBe('G3a');
+    expect(thresholdFor(r, 40)?.label).toBe('G3b');
+    expect(thresholdFor(r, 20)?.label).toBe('G4');
+    expect(thresholdFor(r, 10)?.label).toBe('G5');
+    expect(thresholdFor(r, 75)).toBeNull();
   });
 });
 

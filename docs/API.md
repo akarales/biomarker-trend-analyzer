@@ -45,7 +45,7 @@ curl -X POST localhost:8003/api/v1/observations \
 ```
 
 ```json
-{ "format": "fhir", "inserted": 53, "duplicates": 0, "skipped": 1,
+{ "format": "fhir", "inserted": 53, "duplicates": 0, "skipped": 1, "demographics": 4,
   "skipped_reasons": [ { "reason": "status entered-in-error is not final/amended/corrected", "count": 1 } ],
   "patients": 4, "biomarkers": ["CREAT", "HBA1C", "LDL", "TSH"] }
 ```
@@ -147,6 +147,25 @@ canonical UCUM unit). Example (alice HbA1c, abridged):
   fired — check `not_assessed` for what could not be evaluated.
 - `analyte`, `baseline`, `population`, `rcv`, `ewma`, `change_point`,
   `trend`, `latest` are `null` when not applicable.
+
+## Derived eGFR
+
+Patients with creatinine results **and** FHIR Patient demographics
+(gender female/male + birth year) get an extra report `code: "EGFR"`
+(unit `mL/min/{1.73_m2}`, LOINC 98979-8). One eGFR is derived per
+creatinine result with the 2021 CKD-EPI creatinine equation. It is
+analysed like a measured series, with KDIGO G3a/G3b `watch` and G4/G5
+`alert` thresholds.
+
+- **Summary:** carries `derived` (`{"EGFR": {from: "CREAT", method,
+  gender, birth_year}}`) and `demographics` (`{patient_id, gender,
+  birth_year}`, or `null` for CSV-only patients).
+- **Series:** `GET …/biomarkers/EGFR` returns the creatinine
+  `observations` (the inputs) plus `derived`; measured series have
+  `derived: null`.
+- **No demographics:** without them there is no EGFR report, and the
+  creatinine report's `not_assessed` explains why.
+- **Reviews and explanations** work on EGFR like on any other code.
 
 ## Full series (chart data)
 
