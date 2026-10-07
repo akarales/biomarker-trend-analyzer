@@ -15,7 +15,10 @@ describe('response schemas', () => {
     expect(PatientSummarySchema.safeParse(summary('alice')).success).toBe(true);
     expect(BiomarkerSeriesSchema.safeParse(series('alice', 'HBA1C')).success).toBe(true);
     expect(
-      UploadResultSchema.safeParse({ inserted: 1, duplicates: 0, patients: 1, biomarkers: ['HBA1C'] }).success,
+      UploadResultSchema.safeParse({
+        format: 'fhir', inserted: 1, duplicates: 0, skipped: 1,
+        skipped_reasons: [{ reason: 'no LOINC coding', count: 1 }], patients: 1, biomarkers: ['HBA1C'],
+      }).success,
     ).toBe(true);
   });
 

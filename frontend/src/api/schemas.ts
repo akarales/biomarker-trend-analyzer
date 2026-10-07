@@ -131,9 +131,13 @@ export const BiomarkerSeriesSchema = z.object({
 export type BiomarkerSeries = z.infer<typeof BiomarkerSeriesSchema>;
 
 export const UploadResultSchema = z.object({
+  format: z.enum(['csv', 'fhir']),
   inserted: z.number(),
   /** rows already stored (same patient, code and timestamp) — skipped */
   duplicates: z.number(),
+  /** resources not imported (FHIR: not final, no LOINC, no analyte profile, …) */
+  skipped: z.number(),
+  skipped_reasons: z.array(z.object({ reason: z.string(), count: z.number() })),
   patients: z.number(),
   biomarkers: z.array(z.string()),
 });

@@ -39,6 +39,10 @@ jobs:
       - run: cargo fmt --check
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo test --workspace -q
+      - name: demo edge cases regenerate identically (stdlib Python)
+        run: |
+          python3 scripts/demo/edge_cases.py /tmp/edge-cases.json
+          cmp /tmp/edge-cases.json demo/edge-cases.json
 
   postgres:
     # PgStore + the full router against a real Postgres 17: migrations,

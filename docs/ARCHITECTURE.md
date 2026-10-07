@@ -94,6 +94,14 @@ expected vs. got columns. Rows are then validated in order with the
 offending column named in every error. `biomarker_stats` uses the lazy
 engine (scan → group_by → one collect) for batch files.
 
+**FHIR R4** (`ingest::fhir`): hand-defined serde structs for only the
+fields we read (Bundle → Observation: status, LOINC coding, valueQuantity,
+effectiveDateTime, subject). Each resource is converted on its own, so
+one bad Observation is skipped with a reason instead of failing the
+bundle. The API layer (`import.rs`) then keeps only analytes with a drift
+profile (mapping LOINC → short code) and groups the skip reasons for the
+upload response. The full FHIR models belong to app #3, fhir-r4-explorer.
+
 ## Stores (crates/api/src/store)
 
 Enum dispatch (no dyn-async plumbing), the ZAP Runtime `store/mod.rs`
@@ -112,16 +120,21 @@ re-uploading a file reports duplicates instead of doubling the series.
 Store errors are logged and returned as a generic `internal` error — SQL
 text never reaches clients.
 
-## Seeded demo
+## Seeded demo (`demo/`, see `demo/PROVENANCE.md`)
 
-Synthetic generator (deterministic): 3 patients × 4 biomarkers (HBA1C,
-LDL, TSH, CREAT) × 48 weekly readings — alice's HBA1C steps up at week
-36, bob's LDL rises +0.38/week, carol is the healthy control. With the
-v2 engine: alice HbA1c **alert** (prRI + ADA diabetes threshold, shift on
-2026-09-15, EWMA, trend); bob LDL **watch** (trend +16 %/yr, EWMA); bob's
-creatinine noise **normal**; carol's HbA1c 5.63 % shows the population
-interval as *info* only. (Weekly HbA1c is unrealistic — M3 replaces the
-fixture with Synthea cadences.)
+- **`synthea-subset.json`**: 6 patients and 502 results, curated from a
+  pinned Synthea v4.0.0 run (fixed seed, reproducible byte for byte).
+  Realistic yearly/quarterly cadences for HbA1c, LDL-C and creatinine;
+  pseudonyms, birth year only; physiologically impossible Synthea series
+  are dropped whole by documented rules.
+- **`edge-cases.json`**: 4 hand-made synthetic patients for what Synthea
+  cannot give: a TSH rise on levothyroxine, CKD creatinine creep with a
+  mid-series switch to µmol/L, an erroneous result with repeats plus an
+  `entered-in-error` duplicate, and a sparse/gapped history.
+
+Every detector fires for at least one demo patient, and all three
+statuses occur (`crates/api/tests/demo_data.rs`). The v1 CSV
+(alice/bob/carol, weekly) remains as the API test fixture only.
 
 ## Design decisions
 
@@ -132,5 +145,7 @@ fixture with Synthea cadences.)
 | Population CVI, not the patient's own SD | Works from 3 results and makes limits independent of how noisy a window happens to be (v1's D4); personal-SD models need ≥ 5 steady-state results |
 | Earliest steady state as baseline | A change must stay flagged until a clinician accepts it; a sliding baseline silently normalises disease progression |
 | Seeded property loops instead of proptest | Keeps the drift crate's lockfile surface at serde only |
+| Curated Synthea subset + hand-made edge cases | Synthea gives realistic cadences and comorbidity, but some lab values are impossible and TSH/CKD creatinine are unusable; committing a small reviewed subset (with its generator) beats both raw Synthea and invented-only data |
+| FHIR import keeps profiled analytes only | Without biological variation and limits an analyte can only be trended; a full EHR export would bury the clinically tracked tests |
 | polars here, plain csv+regex in app #1 | Data-shaped workload (scan→filter→group_by) vs one-shot row-wise ETL — the documented decision table in BEST_PRACTICES/RUST_DATA_STACK_2026.md |
 | Enum store dispatch | Same API, swappable backends, object-safe without async-trait |

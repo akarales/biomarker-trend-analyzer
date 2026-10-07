@@ -39,7 +39,7 @@ export default defineConfig({
         APP_PORT: String(API_PORT),
         APP_STORE: 'memory',
         APP_SEED_DEMO: 'true',
-        APP_DEMO_CSV: 'crates/api/tests/fixtures/demo_labs.csv',
+        APP_DEMO_DATA: 'demo',
       },
     },
     {

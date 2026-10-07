@@ -27,6 +27,15 @@ describe('api()', () => {
     );
   });
 
+  it('sends FHIR JSON bodies as application/fhir+json', async () => {
+    respond(201, '{"ok":true}');
+    await api('/x', Schema, { method: 'POST', body: '  {"resourceType":"Bundle"}' });
+    expect(fetch).toHaveBeenCalledWith(
+      '/api/v1/x',
+      expect.objectContaining({ headers: { 'Content-Type': 'application/fhir+json' } }),
+    );
+  });
+
   it('parses {error, code} and keeps the request id', async () => {
     respond(404, '{"error":"unknown patient or biomarker: ghost","code":"not_found"}', {
       'x-request-id': 'abc-1',

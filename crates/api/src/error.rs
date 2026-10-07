@@ -19,6 +19,9 @@ pub enum ApiError {
     BadRequest(String),
     #[error("csv error: {0}")]
     Csv(String),
+    /// message already reads "fhir error: …" (from biomarker-ingest)
+    #[error("{0}")]
+    Fhir(String),
     #[error("internal error")]
     Internal,
 }
@@ -30,6 +33,7 @@ impl ApiError {
             ApiError::NotFound(_) => "not_found",
             ApiError::BadRequest(_) => "bad_request",
             ApiError::Csv(_) => "invalid_csv",
+            ApiError::Fhir(_) => "invalid_fhir",
             ApiError::Internal => "internal",
         }
     }
@@ -38,7 +42,7 @@ impl ApiError {
         match self {
             ApiError::NotFound(_) => StatusCode::NOT_FOUND,
             ApiError::BadRequest(_) => StatusCode::BAD_REQUEST,
-            ApiError::Csv(_) => StatusCode::UNPROCESSABLE_ENTITY,
+            ApiError::Csv(_) | ApiError::Fhir(_) => StatusCode::UNPROCESSABLE_ENTITY,
             ApiError::Internal => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }

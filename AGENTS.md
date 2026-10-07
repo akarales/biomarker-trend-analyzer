@@ -11,7 +11,7 @@ Build, test, and verification commands for the Biomarker Trend Analyzer.
 
 ```bash
 cargo run -p biomarker-api          # serve :8003 (memory store, demo-seeded)
-cargo test --workspace -q           # 71 tests (drift: unit, scenarios, properties, purity), no infra
+cargo test --workspace -q           # 85 tests (drift, ingest incl. FHIR, api incl. demo data), no infra
 cargo clippy --workspace --all-targets -- -D warnings   # must be clean
 cargo fmt --check
 cargo audit                         # accepted advisories + reasons: .cargo/audit.toml
@@ -84,6 +84,23 @@ Rules (`src/test/architecture.test.ts` fails the build on them):
 - Rust: JSON shaping lives in `routes/views.rs`; handlers use `?`
   (`From<StoreError> for ApiError`)
 
+## Demo data (`demo/`, provenance in `demo/PROVENANCE.md`)
+
+```bash
+scripts/synthea/generate_synthea.sh                                  # Java 17+, uv; pinned Synthea v4.0.0 (sha256-checked, cached in .cache/), seed 20261006 → demo/synthea-subset.json (byte-identical)
+uv run --no-project scripts/demo/edge_cases.py demo/edge-cases.json  # hand-made edge cases (fixed seed; CI checks it regenerates identically)
+```
+
+- Synthetic only. The selector keeps pseudonyms, gender and birth YEAR
+  only, and drops implausible Synthea series WHOLE by documented rules
+  (never edits values). The patient selection is an explicit, reviewed
+  list in `select_subset.py`.
+- `crates/api/tests/demo_data.rs` pins the demo: every detector fires,
+  edge cases behave as documented, re-seeding is a no-op. Update it with
+  the data.
+- `crates/api/tests/fixtures/demo_labs.csv` (v1 alice/bob/carol, weekly)
+  is a test fixture only.
+
 ## Environment
 
 | Variable | Default | Notes |
@@ -91,8 +108,8 @@ Rules (`src/test/architecture.test.ts` fails the build on them):
 | `APP_STORE` | `memory` | `memory` or `postgres` |
 | `APP_DATABASE_URL` | — | required for postgres |
 | `APP_SEED_DEMO` | `true` | seed synthetic demo data at startup |
-| `APP_DEMO_CSV` | `crates/api/tests/fixtures/demo_labs.csv` | seed source |
-| `APP_WINDOW_DAYS` | `365` | default trend lookback (per request: `?window_days=`, 7–3650) |
+| `APP_DEMO_DATA` | `demo` | file or directory of FHIR `*.json` / `*.csv` seeded at startup (see `demo/PROVENANCE.md`) |
+| `APP_WINDOW_DAYS` | `1095` | default trend lookback (per request: `?window_days=`, 7–3650); 3 years suits annual/quarterly labs |
 | `APP_PORT` | `8003` | 8000/8001 taken by ZAP_AGI / app #1 |
 
 ## Conventions
@@ -109,8 +126,11 @@ Rules (`src/test/architecture.test.ts` fails the build on them):
   cannot run adds a `NotAssessed` reason — never return a silent "normal"
 - Drift changes come with scenario tests (`tests/scenarios.rs`, one per
   D1–D9 finding) and must keep `tests/properties.rs` green
-- `crates/ingest`: schema is declared and the header is validated explicitly
-  (polars maps the schema positionally otherwise)
+- `crates/ingest`: CSV schema is declared and the header is validated explicitly
+  (polars maps the schema positionally otherwise); `fhir.rs` converts each
+  Observation on its own and skips with a reason — never coerce a value
+- Upload/seed parsing goes through `crates/api/src/import.rs` (format
+  detection, LOINC → profile code, FHIR keeps profiled analytes only)
 - Store changes: implement both backends behind the enum in
   `crates/api/src/store/` + tests run against MemoryStore only
 - Deps ≥7 days old (see BEST_PRACTICES/INDEX.md), exact via Cargo.lock;

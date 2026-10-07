@@ -32,7 +32,7 @@ async fn test_app() -> axum::Router {
         store: StoreBackend::Memory,
         database_url: None,
         seed_demo_data: true,
-        demo_csv: PathBuf::new(),
+        demo_data: PathBuf::new(),
         port: 0,
         window_days: 365,
     };
@@ -61,11 +61,20 @@ async fn get(path: &str) -> (StatusCode, Value) {
 }
 
 async fn post_text_to(app: &axum::Router, path: &str, body: String) -> (StatusCode, Value) {
+    post_typed(app, path, "text/csv", body).await
+}
+
+async fn post_typed(
+    app: &axum::Router,
+    path: &str,
+    content_type: &str,
+    body: String,
+) -> (StatusCode, Value) {
     let response = app
         .clone()
         .oneshot(
             Request::post(path)
-                .header("content-type", "text/csv")
+                .header("content-type", content_type)
                 .body(Body::from(body))
                 .expect("request builds"),
         )
@@ -309,6 +318,125 @@ async fn responses_carry_a_request_id() {
         .await
         .expect("in-process request");
     assert_eq!(echoed.headers()["x-request-id"], "client-abc_123");
+}
+
+fn fhir_bundle(observations: &[(&str, &str, f64, &str, &str)]) -> String {
+    let entries: Vec<Value> = observations
+        .iter()
+        .map(|&(loinc, status, value, unit, when)| {
+            serde_json::json!({ "resource": {
+                "resourceType": "Observation", "status": status,
+                "code": { "coding": [{ "system": "http://loinc.org", "code": loinc }] },
+                "subject": { "reference": "Patient/FHIR-1" },
+                "effectiveDateTime": when,
+                "valueQuantity": { "value": value, "unit": unit, "system": "http://unitsofmeasure.org", "code": unit }
+            }})
+        })
+        .collect();
+    let mut all =
+        vec![serde_json::json!({ "resource": { "resourceType": "Patient", "id": "FHIR-1" } })];
+    all.extend(entries);
+    serde_json::json!({ "resourceType": "Bundle", "type": "collection", "entry": all }).to_string()
+}
+
+#[tokio::test]
+async fn fhir_bundle_upload_is_mapped_filtered_and_idempotent() {
+    let app = test_app().await;
+    let bundle = fhir_bundle(&[
+        ("4548-4", "final", 6.1, "%", "2026-03-01T09:00:00Z"),
+        ("4548-4", "final", 44.0, "mmol/mol", "2026-06-01T09:00:00Z"),
+        ("2345-7", "final", 99.0, "mg/dL", "2026-03-01T09:00:00Z"),
+        (
+            "4548-4",
+            "entered-in-error",
+            9.9,
+            "%",
+            "2026-04-01T09:00:00Z",
+        ),
+    ]);
+    let (status, body) = post_typed(
+        &app,
+        "/api/v1/observations",
+        "application/fhir+json",
+        bundle.clone(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    assert_eq!(body["format"], "fhir");
+    assert_eq!(body["inserted"], 2);
+    assert_eq!(body["skipped"], 2);
+    assert_eq!(body["biomarkers"], serde_json::json!(["HBA1C"]));
+    let reasons: Vec<&str> = body["skipped_reasons"]
+        .as_array()
+        .expect("reasons")
+        .iter()
+        .filter_map(|r| r["reason"].as_str())
+        .collect();
+    assert!(
+        reasons.contains(&"no analyte profile for LOINC 2345-7"),
+        "{reasons:?}"
+    );
+    assert!(
+        reasons.iter().any(|r| r.contains("entered-in-error")),
+        "{reasons:?}"
+    );
+
+    // same bundle again (content sniffed without a JSON content type)
+    let (_, again) = post_typed(&app, "/api/v1/observations", "text/plain", bundle).await;
+    assert_eq!(
+        (again["format"].as_str(), again["inserted"].as_u64()),
+        (Some("fhir"), Some(0))
+    );
+
+    // stored under the profile code, IFCC unit normalised by the engine
+    let response = app
+        .oneshot(
+            Request::get("/api/v1/patients/FHIR-1/biomarkers/HBA1C")
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("in-process request");
+    let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .expect("body");
+    let series: Value = serde_json::from_slice(&bytes).expect("json");
+    let points = series["report"]["points"].as_array().expect("points");
+    assert_eq!(points.len(), 2);
+    assert!(
+        (points[1]["v"].as_f64().expect("v") - 6.18).abs() < 0.02,
+        "44 mmol/mol ≈ 6.2 %"
+    );
+}
+
+#[tokio::test]
+async fn fhir_upload_errors_have_codes() {
+    let (status, body) = post_typed(
+        &test_app().await,
+        "/api/v1/observations",
+        "application/json",
+        "{not json".into(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(body["code"], "invalid_fhir");
+
+    let only_untracked = fhir_bundle(&[("2345-7", "final", 99.0, "mg/dL", "2026-03-01")]);
+    let (status, body) = post_typed(
+        &test_app().await,
+        "/api/v1/observations",
+        "application/fhir+json",
+        only_untracked,
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert!(
+        body["error"]
+            .as_str()
+            .expect("msg")
+            .contains("1 skipped: no analyte profile for LOINC 2345-7"),
+        "{body}"
+    );
 }
 
 #[tokio::test]

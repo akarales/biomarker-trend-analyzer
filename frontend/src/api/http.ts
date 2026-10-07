@@ -33,15 +33,21 @@ async function errorFrom(res: Response): Promise<ApiError> {
   );
 }
 
+/** Upload bodies are CSV or a FHIR R4 JSON document (starts with `{`). */
+export function bodyContentType(body: string): string {
+  return body.trimStart().startsWith('{') ? 'application/fhir+json' : 'text/csv';
+}
+
 /** Fetch `/api/v1{path}` and validate the JSON body against `schema`. */
 export async function api<S extends z.ZodMiniType>(
   path: string,
   schema: S,
   init?: RequestInit,
 ): Promise<z.infer<S>> {
+  const body = typeof init?.body === 'string' ? init.body : null;
   const res = await fetch(`/api/v1${path}`, {
     ...init,
-    headers: init?.body ? { 'Content-Type': 'text/csv' } : undefined,
+    headers: body !== null ? { 'Content-Type': bodyContentType(body) } : undefined,
   });
   if (!res.ok) throw await errorFrom(res);
   const parsed = schema.safeParse(await res.json());

@@ -16,7 +16,7 @@ RUN apt-get update \
     && useradd --system --uid 10001 --no-create-home --shell /usr/sbin/nologin app
 COPY --from=builder /build/target/release/biomarker-api /usr/local/bin/
 WORKDIR /app
-ENV APP_DEMO_CSV=/app/demo_labs.csv
+ENV APP_DEMO_DATA=/app/demo
 USER app
 EXPOSE 8003
 CMD ["biomarker-api"]

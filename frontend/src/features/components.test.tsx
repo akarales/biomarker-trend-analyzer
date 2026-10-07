@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { ErrorBanner } from '@/shared/components/ErrorBanner';
@@ -109,6 +109,16 @@ describe('UploadPanel', () => {
     expect(button.disabled).toBe(false);
     fireEvent.click(button);
     expect(upload).toHaveBeenCalled();
+  });
+});
+
+describe('UploadPanel file loading', () => {
+  it('loads a chosen FHIR file into the box', async () => {
+    render(<UploadPanel />);
+    const input = screen.getByLabelText('Load file…') as HTMLInputElement;
+    const file = new File(['{"resourceType":"Bundle"}'], 'labs.json', { type: 'application/fhir+json' });
+    fireEvent.change(input, { target: { files: [file] } });
+    await waitFor(() => expect(useAnalyzer.getState().uploadText).toBe('{"resourceType":"Bundle"}'));
   });
 });
 

@@ -12,7 +12,15 @@ curl localhost:8003/health
 { "status": "ok", "store": "memory", "version": "0.1.0" }
 ```
 
-## Upload observations (CSV)
+## Upload observations (CSV or FHIR R4)
+
+`POST /api/v1/observations` takes either format. `application/json` /
+`application/fhir+json` or a body starting with `{` means FHIR; anything
+else is CSV.
+
+**CSV**: exact header `patient_id,code,value,unit,taken_at,source`.
+`code` is a short code (`HBA1C`) or a LOINC code (`4548-4`, mapped to the
+profile's short code). `taken_at` accepts `YYYY-MM-DD` or ISO date-times.
 
 ```bash
 curl -X POST localhost:8003/api/v1/observations \
@@ -21,16 +29,32 @@ curl -X POST localhost:8003/api/v1/observations \
 dave,HBA1C,7.2,%,2026-09-01,upload'
 ```
 
-```json
-{ "inserted": 1, "duplicates": 0, "patients": 1, "biomarkers": ["HBA1C"] }
+**FHIR R4**: a `Bundle` (any type) or a single `Observation`.
+
+- An Observation is imported when its `status` is
+  final/amended/corrected, it has a LOINC coding for a **profiled
+  analyte**, a `valueQuantity` (UCUM `code`, else `unit`), a full
+  `effectiveDateTime` (date-times need an offset; stored as UTC) and a
+  `subject` of `Patient/<id>` or `urn:uuid:<id>`.
+- Everything else is skipped with a reason. Other resource types are
+  ignored.
+
+```bash
+curl -X POST localhost:8003/api/v1/observations \
+  -H 'content-type: application/fhir+json' --data-binary @demo/edge-cases.json
 ```
 
-Uploads are idempotent: a row whose `(patient_id, code, taken_at)` is
-already stored (or repeated in the same file) is skipped and counted in
-`duplicates` — posting the same file twice returns `inserted: 0`.
+```json
+{ "format": "fhir", "inserted": 53, "duplicates": 0, "skipped": 1,
+  "skipped_reasons": [ { "reason": "status entered-in-error is not final/amended/corrected", "count": 1 } ],
+  "patients": 4, "biomarkers": ["CREAT", "HBA1C", "LDL", "TSH"] }
+```
 
-Enforced CSV schema (exact header): `patient_id,code,value,unit,taken_at,source`.
-`taken_at` accepts `YYYY-MM-DD` or full ISO datetimes.
+Uploads are idempotent: a result whose `(patient_id, code, taken_at)` is
+already stored (or repeated in the same file) is counted in
+`duplicates`, so posting the same file twice returns `inserted: 0`. A
+body with nothing importable returns `400`, and the message names the
+most common skip reason.
 
 ## Patient listing
 
@@ -49,7 +73,7 @@ Both analysis endpoints accept:
 | Param | Default | Meaning |
 |-------|---------|---------|
 | `as_of` | latest result of each series | `YYYY-MM-DD` (end of that day, UTC) or RFC 3339; results after it are excluded. The wall clock is never used, so a report is reproducible. |
-| `window_days` | `APP_WINDOW_DAYS` (365) | lookback for the trend detector only (7–3650). The personal baseline is the earliest steady state, independent of the window. |
+| `window_days` | `APP_WINDOW_DAYS` (1095) | lookback for the trend detector only (7–3650). The personal baseline is the earliest steady state, independent of the window. |
 
 Invalid values → `400 bad_request`.
 
@@ -128,5 +152,6 @@ is on the server's log lines for that request.
 |--------|--------|---------|
 | `400` | `bad_request` | valid header but zero data rows ("no observations") |
 | `404` | `not_found` | unknown patient / biomarker |
+| `422` | `invalid_fhir` | not JSON, or not a Bundle/Observation |
 | `422` | `invalid_csv` | schema mismatch (header), bad value, bad date (all name the row and column) |
 | `500` | `internal` | store failure (e.g. Postgres down) — details only in the server log |

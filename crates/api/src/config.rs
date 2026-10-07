@@ -11,8 +11,9 @@ pub struct Config {
     pub store: StoreBackend,
     pub database_url: Option<String>,
     pub seed_demo_data: bool,
-    /// Demo data CSV path (used when seeding).
-    pub demo_csv: std::path::PathBuf,
+    /// Demo data to seed: a file, or a directory of `*.json` (FHIR) and
+    /// `*.csv` files seeded in name order.
+    pub demo_data: std::path::PathBuf,
     pub port: u16,
     /// Trend lookback window in days (the personal baseline is the earliest steady state).
     pub window_days: i64,
@@ -28,7 +29,7 @@ impl std::fmt::Debug for Config {
                 &self.database_url.as_ref().map(|_| "<redacted>"),
             )
             .field("seed_demo_data", &self.seed_demo_data)
-            .field("demo_csv", &self.demo_csv)
+            .field("demo_data", &self.demo_data)
             .field("port", &self.port)
             .field("window_days", &self.window_days)
             .finish()
@@ -62,20 +63,17 @@ impl Config {
             }
         });
 
-        let demo_csv = std::path::PathBuf::from(env_or(
-            "APP_DEMO_CSV",
-            "crates/api/tests/fixtures/demo_labs.csv",
-        ));
+        let demo_data = std::path::PathBuf::from(env_or("APP_DEMO_DATA", "demo"));
 
         Ok(Self {
             store,
             database_url,
             seed_demo_data: env_or("APP_SEED_DEMO", "true").to_lowercase() != "false",
-            demo_csv,
+            demo_data,
             port: env_or("APP_PORT", "8003")
                 .parse()
                 .map_err(|_| ConfigError("APP_PORT must be a valid port number".to_string()))?,
-            window_days: env_or("APP_WINDOW_DAYS", "365")
+            window_days: env_or("APP_WINDOW_DAYS", "1095")
                 .parse()
                 .map_err(|_| ConfigError("APP_WINDOW_DAYS must be a number of days".to_string()))?,
         })

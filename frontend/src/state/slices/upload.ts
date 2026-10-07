@@ -17,9 +17,14 @@ export interface UploadSlice {
 
 /** Human summary of an idempotent upload. */
 export function uploadSummary(result: UploadResult): string {
+  const skipped = result.skipped_reasons
+    .slice(0, 3)
+    .map((r) => `${r.count}× ${r.reason}`)
+    .join('; ');
   return (
-    `Inserted ${result.inserted} observations across ${result.patients} patient(s): ${result.biomarkers.join(', ')}` +
-    (result.duplicates > 0 ? ` (${result.duplicates} already stored, skipped)` : '')
+    `${result.format === 'fhir' ? 'FHIR: i' : 'I'}nserted ${result.inserted} observations across ${result.patients} patient(s): ${result.biomarkers.join(', ')}` +
+    (result.duplicates > 0 ? ` (${result.duplicates} already stored, skipped)` : '') +
+    (result.skipped > 0 ? `. Not imported: ${skipped}${result.skipped_reasons.length > 3 ? '; …' : ''}` : '')
   );
 }
 

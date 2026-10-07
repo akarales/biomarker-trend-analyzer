@@ -12,9 +12,9 @@ Machine-facing commands live in [AGENTS.md](../AGENTS.md).
 ```bash
 cargo run -p biomarker-api      # :8003, demo-seeded memory store
 cd frontend && pnpm dev         # :5174 (strict) → /api proxied
-cargo test --workspace -q      # 71 tests — no Postgres, no network
+cargo test --workspace -q      # 85 tests — no Postgres, no network
 cargo clippy --workspace --all-targets -- -D warnings
-cd frontend && pnpm test && pnpm e2e   # vitest (40) + Playwright smoke
+cd frontend && pnpm test && pnpm e2e   # vitest (42) + Playwright smoke
 ```
 
 ## Postgres mode
@@ -32,6 +32,19 @@ creates a fresh database per test); CI runs them in a `postgres` job:
 DATABASE_URL=postgresql://app:app@127.0.0.1:5435/biomarkers \
   cargo test -p biomarker-api --features pg-tests --test pg_store
 ```
+
+## Demo data
+
+```bash
+scripts/synthea/generate_synthea.sh                                  # ~40 s; byte-identical demo/synthea-subset.json
+uv run --no-project scripts/demo/edge_cases.py demo/edge-cases.json
+uv run --no-project scripts/synthea/select_subset.py .cache/synthea/out/fhir /tmp/c.json --candidates   # every plausible patient, to review a new selection
+```
+
+To change the selection: run with `--candidates`, seed a throwaway API
+(`APP_PORT=8094 APP_DEMO_DATA=/tmp/c.json`), look at the summaries, then
+update `SELECTION` in `select_subset.py`, `demo/PROVENANCE.md` and
+`crates/api/tests/demo_data.rs` together.
 
 ## Testing notes
 
@@ -69,6 +82,10 @@ DATABASE_URL=postgresql://app:app@127.0.0.1:5435/biomarkers \
   date-time text in the browser (it is read as local time)
 - **sqlx + TIMESTAMPTZ**: decode into `DateTime<Utc>`, never
   `NaiveDateTime` (v1 shipped that mismatch untested)
+- **Synthea lab values**: v4.0.0 emits physiologically impossible series
+  (HbA1c 2.4 % for years, creatinine 70 mg/dL, negative LDL, creatinine
+  disagreeing with eGFR, almost no TSH). Never show raw Synthea labs to a
+  clinical audience; filter whole series by rule and curate
 - Port 8002 is taken on this machine — this service runs on 8003;
   Postgres 5433/5434 belong to other projects — compose uses 5435
 

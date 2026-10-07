@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import * as patientsApi from '@/api/patients';
 import * as observationsApi from '@/api/observations';
 import { ApiError } from '@/api/http';
-import type { BiomarkerSeries, PatientSummary } from '@/api/schemas';
+import type { BiomarkerSeries, PatientSummary, UploadResult } from '@/api/schemas';
 import { deferred, patients, series, summary } from '@/test/fixtures';
 
 import { showTrendPrompt, uploadSummary, useAnalyzer } from './index';
@@ -96,22 +96,32 @@ describe('biomarker slice', () => {
 });
 
 describe('upload slice', () => {
-  it('summarises inserted and duplicate rows', () => {
-    expect(uploadSummary({ inserted: 2, duplicates: 0, patients: 1, biomarkers: ['HBA1C', 'LDL'] })).toBe(
+  const result = (over: Partial<UploadResult> = {}): UploadResult => ({
+    format: 'csv',
+    inserted: 1,
+    duplicates: 0,
+    skipped: 0,
+    skipped_reasons: [],
+    patients: 1,
+    biomarkers: ['HBA1C'],
+    ...over,
+  });
+
+  it('summarises inserted, duplicate and skipped rows', () => {
+    expect(uploadSummary(result({ inserted: 2, biomarkers: ['HBA1C', 'LDL'] }))).toBe(
       'Inserted 2 observations across 1 patient(s): HBA1C, LDL',
     );
-    expect(uploadSummary({ inserted: 0, duplicates: 3, patients: 1, biomarkers: ['LDL'] })).toBe(
+    expect(uploadSummary(result({ inserted: 0, duplicates: 3, biomarkers: ['LDL'] }))).toBe(
       'Inserted 0 observations across 1 patient(s): LDL (3 already stored, skipped)',
+    );
+    const reasons = ['a', 'b', 'c', 'd'].map((r, i) => ({ reason: `reason ${r}`, count: 4 - i }));
+    expect(uploadSummary(result({ format: 'fhir', skipped: 10, skipped_reasons: reasons }))).toBe(
+      'FHIR: inserted 1 observations across 1 patient(s): HBA1C. Not imported: 4× reason a; 3× reason b; 2× reason c; …',
     );
   });
 
   it('uploads, clears the box and refreshes the listing', async () => {
-    vi.mocked(observationsApi.uploadCsv).mockResolvedValue({
-      inserted: 1,
-      duplicates: 0,
-      patients: 1,
-      biomarkers: ['HBA1C'],
-    });
+    vi.mocked(observationsApi.uploadCsv).mockResolvedValue(result());
     useAnalyzer.setState({ uploadText: 'csv', error: 'old' });
     await state().upload();
     expect(observationsApi.uploadCsv).toHaveBeenCalledWith('csv');

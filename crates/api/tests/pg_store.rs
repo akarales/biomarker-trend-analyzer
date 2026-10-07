@@ -33,7 +33,7 @@ fn app(store: Store) -> axum::Router {
             store: StoreBackend::Postgres,
             database_url: None,
             seed_demo_data: true,
-            demo_csv: PathBuf::new(),
+            demo_data: PathBuf::new(),
             port: 0,
             window_days: 365,
         }),

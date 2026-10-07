@@ -8,6 +8,7 @@ use biomarker_drift::DriftReport;
 use biomarker_ingest::Observation;
 use serde::Serialize;
 
+use crate::import::{Format, Parsed, SkipReason};
 use crate::store::{InsertReport, PatientSummary};
 
 #[derive(Serialize)]
@@ -66,18 +67,27 @@ pub struct SeriesView {
 
 #[derive(Serialize)]
 pub struct UploadView {
+    pub format: Format,
     pub inserted: usize,
     pub duplicates: usize,
+    /// resources/rows not imported (FHIR: not final, no LOINC, no profile, …)
+    pub skipped: usize,
+    /// grouped reasons, most frequent first
+    pub skipped_reasons: Vec<SkipReason>,
     pub patients: usize,
     pub biomarkers: BTreeSet<String>,
 }
 
 impl UploadView {
-    pub fn new(report: InsertReport, observations: &[Observation]) -> Self {
+    pub fn new(report: InsertReport, parsed: &Parsed) -> Self {
+        let observations = &parsed.observations;
         let patients: BTreeSet<&str> = observations.iter().map(|o| o.patient_id.as_str()).collect();
         Self {
+            format: parsed.format,
             inserted: report.inserted,
             duplicates: report.duplicates,
+            skipped: parsed.skipped_total(),
+            skipped_reasons: parsed.skipped.clone(),
             patients: patients.len(),
             biomarkers: observations.iter().map(|o| o.code.clone()).collect(),
         }
