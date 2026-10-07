@@ -23,7 +23,7 @@ services:
       context: .
       dockerfile: Dockerfile
     ports:
-      - "8003:8003"
+      - "127.0.0.1:8003:8003"
     environment:
       APP_STORE: postgres
       APP_DATABASE_URL: postgresql://app:app@db:5432/biomarkers
@@ -45,7 +45,12 @@ services:
       context: .
       dockerfile: frontend/Dockerfile
     ports:
-      - "3002:80"
+      - "127.0.0.1:3002:8080"
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
     depends_on:
       - api
     restart: unless-stopped

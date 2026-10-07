@@ -5,7 +5,7 @@ Machine-facing commands live in [AGENTS.md](../AGENTS.md).
 ## Prerequisites
 
 - Rust 1.96, cargo · pnpm 11 / Node 24 (frontend)
-- Docker (only for Postgres mode)
+- Docker (Postgres mode and the full `docker compose up --build` stack)
 
 ## Daily loop
 
@@ -14,7 +14,7 @@ cargo run -p biomarker-api      # :8003, demo-seeded memory store
 cd frontend && pnpm dev         # :5174 (strict) → /api proxied
 cargo test --workspace -q      # 118 tests — no Postgres, no network
 cargo clippy --workspace --all-targets -- -D warnings
-cd frontend && pnpm test && pnpm e2e   # vitest (77) + Playwright smoke + a11y
+cd frontend && pnpm test && pnpm e2e   # vitest (77) + Playwright smoke, review, a11y (12)
 ```
 
 ## Postgres mode
@@ -45,6 +45,13 @@ To change the selection: run with `--candidates`, seed a throwaway API
 (`APP_PORT=8094 APP_DEMO_DATA=/tmp/c.json`), look at the summaries, then
 update `SELECTION` in `select_subset.py`, `demo/PROVENANCE.md` and
 `crates/api/tests/demo_data.rs` together.
+
+Demo GIF (needs the dev servers on :8003 and :5174; restart the API
+afterwards to drop the demo's review event):
+
+```bash
+cd frontend && node scripts/record-demo.mjs   # → docs/demo.gif (~13 s, < 3 MB)
+```
 
 ## Testing notes
 
@@ -82,6 +89,10 @@ update `SELECTION` in `select_subset.py`, `demo/PROVENANCE.md` and
   date-time text in the browser (it is read as local time)
 - **sqlx + TIMESTAMPTZ**: decode into `DateTime<Utc>`, never
   `NaiveDateTime` (v1 shipped that mismatch untested)
+- **Docker glibc**: `rust:1.96-slim` moved to Debian trixie while the
+  runtime stayed on bookworm, so the API image built but did not start
+  (`GLIBC_2.38 not found`). Both stages now name the same release, and the
+  CI `docker` job runs the images
 - **Synthea lab values**: v4.0.0 emits physiologically impossible series
   (HbA1c 2.4 % for years, creatinine 70 mg/dL, negative LDL, creatinine
   disagreeing with eGFR, almost no TSH). Never show raw Synthea labs to a

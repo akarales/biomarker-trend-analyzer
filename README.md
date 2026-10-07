@@ -1,28 +1,36 @@
 <p align="center">
   <h1>📈 Biomarker Trend Analyzer</h1>
-  <p><b>Personal-baseline drift detection — personalised reference intervals, RCV, CUSUM/EWMA, Mann–Kendall</b></p>
+  <p><b>Clinician workspace for lab-result drift — personalised reference intervals, RCV, CUSUM/EWMA, Mann–Kendall, FHIR R4, review audit, grounded streamed AI</b></p>
   <p>
     <a href="https://github.com/akarales/biomarker-trend-analyzer/actions/workflows/ci.yml"><img src="https://github.com/akarales/biomarker-trend-analyzer/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
     <img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT">
     <img src="https://img.shields.io/badge/Rust-1.96-orange?logo=rust" alt="Rust 1.96">
-    <img src="https://img.shields.io/badge/tests-118%20rust%20%2B%2077%20web-success" alt="tests">
-    <img src="https://img.shields.io/badge/port-8003-blue" alt="port 8003">
+    <img src="https://img.shields.io/badge/tests-118_rust_·_77_vitest_·_12_e2e-success" alt="tests: 118 Rust, 77 vitest, 12 Playwright">
+    <img src="https://img.shields.io/badge/data-synthetic_(Synthea)-blue" alt="synthetic data (Synthea)">
   </p>
 </p>
 
-The core concept behind longitudinal patient monitoring: judge each new lab
-result against the patient's **own** steady state — using published
-biological variation, the way laboratory medicine does — next to the
-population limits, and say *why* something was flagged.
-Rust-native — a pure drift-math crate, polars ingestion, an axum API with
-pluggable stores (in-memory or PostgreSQL), and a React client with
-hand-rolled SVG trend charts.
+<p align="center">
+  <img src="docs/demo.gif" width="720" alt="Demo: the triage list puts SYN-01 first; opening the HbA1c card shows the trend chart with the personal reference interval, diabetes threshold and a hover readout; the signals explain why the status is Alert, the personal-reference-interval signal is acknowledged and appears in the append-only review history, and an explanation draft grounded in the computed signals streams in">
+</p>
 
-**Jump to:** [Features](#-features) · [Architecture](#-architecture) · [Quickstart](#-quickstart) · [Configuration](#️-configuration) · [API](#-api) · [Docs](#-documentation) · [Roadmap](#️-roadmap)
+Longitudinal lab monitoring the way laboratory medicine does it: judge each
+new result against the patient's **own** steady state using published
+biological variation, keep the population limits and clinical thresholds
+alongside, and say **why** something was flagged. Clinicians triage patients
+by what still needs review, read the chart (or its table), acknowledge or
+dismiss each signal into an append-only audit trail, and can ask for a
+streamed draft explanation that stays grounded in the computed signals.
+Rust-native: a pure drift-math crate, polars and FHIR R4 ingestion, an axum
+API over an in-memory or PostgreSQL store, and a React 19 + shadcn client
+with hand-rolled SVG charts.
+
+**Jump to:** [Features](#-features) · [Architecture](#-architecture) · [Quickstart](#-quickstart) · [Safety & data](#️-safety--data) · [Configuration](#️-configuration) · [API](#-api) · [Docs](#-documentation)
 
 > [!WARNING]
-> Demo application with synthetic data. Drift reports are informational
-> only — not clinical decision support, not medical advice.
+> Demo application on **synthetic** data (Synthea + hand-made cases). Drift
+> signals and AI drafts are informational only — not clinical decision
+> support, not medical advice; every output needs clinician review.
 
 ## ⚡ Features
 
@@ -92,6 +100,37 @@ APP_STORE=postgres APP_DATABASE_URL=postgresql://app:app@127.0.0.1:5435/biomarke
   cargo run -p biomarker-api
 ```
 
+Everything in containers (API on Postgres, web UI via nginx):
+
+```bash
+docker compose up --build     # → http://localhost:3002 (API on 127.0.0.1:8003)
+```
+
+Both images run as non-root users with read-only root filesystems.
+nginx (the unprivileged image, port 8080) sends a strict CSP and security
+headers, and streams the explanation endpoint unbuffered.
+
+## 🛡️ Safety & data
+
+- **Synthetic only.** The demo patients are a curated Synthea subset
+  (pseudonyms, birth year only) plus hand-made edge cases
+  ([demo/PROVENANCE.md](demo/PROVENANCE.md)). Free-text review reasons
+  are screened for identifier patterns.
+- **The computed signals are authoritative.** Every signal carries its
+  rule, limit, explanation and source; "not assessed" lists what could not
+  be checked; "no rule fired" is never presented as healthy.
+- **AI drafts:**
+  - the disclaimer arrives from the first byte;
+  - the model never sees the patient identifier;
+  - the server overwrites the model's status with the computed one and
+    re-attaches the signals.
+- **Audit.** Reviews are append-only events (a database trigger rejects
+  edits) carrying a server-computed snapshot of the signal at decision
+  time. A review never hides a finding: the status stays visible and the
+  next result raises a new signal.
+- **Not validated:** the analyte profiles are cited and dated, but CVA
+  values are assumptions and nothing here is clinically validated.
+
 ## ⚙️ Configuration
 
 | Variable | Default | Notes |
@@ -126,9 +165,10 @@ curl + JSON examples: [docs/API.md](docs/API.md).
 
 | Page | What's inside |
 |------|---------------|
-| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Drift math, detector semantics, ingestion pipeline, store pattern |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Drift method + sources, ingestion, stores, review audit, LLM pipeline, workspace |
 | [docs/API.md](docs/API.md) | Endpoint reference with payloads + error taxonomy |
-| [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) | Setup, Postgres mode, testing, gotchas |
+| [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) | Setup, Postgres mode, testing, demo data + demo GIF, gotchas |
+| [demo/PROVENANCE.md](demo/PROVENANCE.md) | Where every demo patient comes from (Synthea version, seed, rules) |
 
 ## 🗺️ Roadmap
 
@@ -144,9 +184,10 @@ curl + JSON examples: [docs/API.md](docs/API.md).
 
 ## 🤝 Contributing
 
-PRs welcome — see [CONTRIBUTING.md](CONTRIBUTING.md). Gates: `cargo
-clippy --workspace --all-targets -- -D warnings`, `cargo test
---workspace -q`, `pnpm build`.
+PRs welcome — see [CONTRIBUTING.md](CONTRIBUTING.md). Gates: `cargo fmt
+--check`, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo
+test --workspace -q`, and in `frontend/`: `pnpm build`, `pnpm lint`,
+`pnpm test`, `pnpm e2e`.
 
 ## 📄 License
 

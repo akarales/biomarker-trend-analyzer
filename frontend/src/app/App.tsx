@@ -20,12 +20,22 @@ export default function App() {
   return (
     <>
       <div className="flex min-h-full flex-col">
+        <a
+          href="#workspace"
+          className="sr-only rounded-md bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-50"
+        >
+          Skip to workspace
+        </a>
         <AppHeader />
         <div className="grid flex-1 grid-cols-1 content-start gap-4 p-4 lg:grid-cols-[20rem_minmax(0,1fr)]">
           <div className="max-h-[45vh] overflow-y-auto pr-1 lg:col-start-1 lg:row-start-1 lg:max-h-none">
             <PatientList />
           </div>
-          <main className="flex min-w-0 flex-col gap-4 lg:col-start-2 lg:row-span-2 lg:row-start-1">
+          <main
+            id="workspace"
+            tabIndex={-1}
+            className="flex min-w-0 flex-col gap-4 outline-none lg:col-start-2 lg:row-span-2 lg:row-start-1"
+          >
             <ErrorBanner message={error} />
             <BiomarkerCards />
             <TrendPanel />

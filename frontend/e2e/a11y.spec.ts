@@ -87,3 +87,23 @@ test.describe('mobile', () => {
     expect(overflow).toBeLessThanOrEqual(0);
   });
 });
+
+test('skip link jumps past the triage list', async ({ page }) => {
+  await ready(page);
+  await page.keyboard.press('Tab');
+  const skip = page.getByRole('link', { name: 'Skip to workspace' });
+  await expect(skip).toBeFocused();
+  await expect(skip).toBeVisible();
+  await page.keyboard.press('Enter');
+  await expect(page.locator('main#workspace')).toBeFocused();
+});
+
+test.describe('reduced motion', () => {
+  test.use({ reducedMotion: 'reduce' });
+  test('transitions are effectively off', async ({ page }) => {
+    await ready(page);
+    const card = page.getByRole('region', { name: 'Biomarkers' }).getByRole('button').first();
+    const duration = await card.evaluate((el) => parseFloat(getComputedStyle(el).transitionDuration));
+    expect(duration).toBeLessThan(0.001);
+  });
+});

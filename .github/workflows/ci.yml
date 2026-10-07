@@ -130,3 +130,29 @@ jobs:
         with:
           name: playwright-traces
           path: frontend/test-results/
+
+  docker:
+    # the shipped images must start: build both, run them hardened (read-only
+    # root, no-new-privileges) on one network, check users, headers, proxy
+    # and the NDJSON stream through nginx
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: |
+          docker build -q -t bta-api -f Dockerfile .
+          docker build -q -t bta-web -f frontend/Dockerfile .
+      - run: |
+          docker network create bta
+          docker run -d --name api --network bta --read-only --security-opt no-new-privileges:true \
+            -e APP_STORE=memory -v "$PWD/demo:/app/demo:ro" bta-api
+          docker run -d --name web --network bta --read-only --tmpfs /tmp --security-opt no-new-privileges:true \
+            -p 127.0.0.1:8086:8080 bta-web
+          for i in $(seq 1 30); do curl -sf localhost:8086/health >/dev/null && break; sleep 1; done
+          test "$(docker exec api id -u)" = 10001
+          test "$(docker exec web id -u)" = 101
+          curl -sfI localhost:8086/ | grep -qi "content-security-policy: default-src 'self'"
+          curl -sf localhost:8086/api/v1/patients | grep -q '"patient_id":"SYN-01"'
+          curl -sfN -X POST localhost:8086/api/v1/explain/stream -H 'content-type: application/json' \
+            -d '{"patient_id":"SYN-01","code":"HBA1C"}' | tail -n 1 | grep -q '"type":"done"'
+      - if: failure()
+        run: docker logs api; docker logs web

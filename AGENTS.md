@@ -131,6 +131,23 @@ Rules (`src/test/architecture.test.ts` fails the build on them):
   attaches `signals` — keep that for any new LLM output.
 - Disclaimer on the stream's first line; `done` == the `/explain` body.
 
+## Docker
+
+```bash
+docker compose up --build    # db 127.0.0.1:5435, api 127.0.0.1:8003 (postgres store), web 127.0.0.1:3002
+```
+
+- API image: `rust:1.96-slim-trixie` → `debian:trixie-slim`. Keep both on the
+  SAME Debian release (a newer builder glibc makes the binary fail to start).
+  It runs as uid 10001 with a read-only root.
+- Web image: `nginxinc/nginx-unprivileged` (uid 101, port 8080), read-only
+  root + tmpfs `/tmp`. `frontend/nginx.conf` holds the CSP and security
+  headers (repeated in every location with its own `add_header`) and the
+  unbuffered stream location.
+- The CI `docker` job builds and runs both images hardened, then checks
+  users, CSP, the proxy and the NDJSON stream. Keep it green when touching
+  Dockerfiles or nginx.
+
 ## Demo data (`demo/`, provenance in `demo/PROVENANCE.md`)
 
 ```bash
