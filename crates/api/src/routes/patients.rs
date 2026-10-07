@@ -7,6 +7,7 @@ use biomarker_drift::DriftReport;
 use super::views::{PatientTriageView, PatientsView, SummaryView};
 use crate::analysis::{self, AnalysisParams, Options};
 use crate::error::ApiError;
+use crate::review;
 use crate::state::AppState;
 use crate::triage;
 
@@ -33,7 +34,8 @@ pub async fn list(
     let options = params.options(state.config.window_days)?;
     let mut patients = Vec::new();
     for entry in state.store.listing().await? {
-        let triage = triage::triage(&reports(&state, &entry.patient_id, options).await?);
+        let events = state.store.reviews(&entry.patient_id, None).await?;
+        let triage = triage::triage(&reports(&state, &entry.patient_id, options).await?, &events);
         patients.push(PatientTriageView { entry, triage });
     }
     patients.sort_by_key(|p| triage::sort_key(&p.triage, &p.entry.patient_id));
@@ -56,10 +58,16 @@ pub async fn summary(
             "no observations for patient {patient_id}"
         )));
     }
+    let events = state.store.reviews(&patient_id, None).await?;
+    let reviews = reports
+        .iter()
+        .map(|r| (r.code.clone(), review::report_reviews(r, &events)))
+        .collect();
     Ok(Json(SummaryView {
         patient_id,
         as_of: options.as_of,
         window_days: options.window_days,
         reports,
+        reviews,
     }))
 }

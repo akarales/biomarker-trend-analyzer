@@ -1,4 +1,4 @@
-import type { DriftReport, PatientSummaryEntry } from '@/api/schemas';
+import type { DriftReport, PatientSummaryEntry, SignalReview } from '@/api/schemas';
 
 import type { Store } from './store';
 
@@ -12,3 +12,8 @@ export const selectedEntry = (s: Store): PatientSummaryEntry | undefined =>
 /** Report of the selected biomarker. */
 export const selectedReport = (s: Store): DriftReport | undefined =>
   s.reports.find((r) => r.code === s.selectedCode);
+
+/** Watch/alert signals of a report still awaiting review. */
+export function unreviewedCount(report: DriftReport, reviews: SignalReview[] | undefined): number {
+  return report.signals.filter((s, i) => s.severity !== 'info' && (reviews?.[i]?.state ?? 'unreviewed') === 'unreviewed').length;
+}

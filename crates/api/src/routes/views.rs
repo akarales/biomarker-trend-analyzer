@@ -2,14 +2,15 @@
 //! the routes decides field names, so the wire contract lives in one file
 //! (mirrored by `frontend/src/api/schemas.ts`).
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use biomarker_drift::DriftReport;
 use biomarker_ingest::Observation;
 use serde::Serialize;
 
 use crate::import::{Format, Parsed, SkipReason};
-use crate::store::{InsertReport, PatientSummary};
+use crate::review::SignalReview;
+use crate::store::{InsertReport, PatientSummary, ReviewEvent};
 use crate::triage::Triage;
 
 #[derive(Serialize)]
@@ -43,6 +44,8 @@ pub struct SummaryView {
     pub as_of: Option<i64>,
     pub window_days: i64,
     pub reports: Vec<DriftReport>,
+    /// review status per biomarker code, aligned with each report's `signals`
+    pub reviews: BTreeMap<String, Vec<SignalReview>>,
 }
 
 /// A stored observation as recorded (original unit; the report's `points`
@@ -76,6 +79,25 @@ pub struct SeriesView {
     pub code: String,
     pub observations: Vec<ObservationView>,
     pub report: DriftReport,
+    /// review status of each signal (same order as `report.signals`)
+    pub reviews: Vec<SignalReview>,
+    /// the biomarker's review audit trail, newest first
+    pub history: Vec<ReviewEvent>,
+}
+
+/// Response of `POST …/reviews`.
+#[derive(Serialize)]
+pub struct ReviewCreatedView {
+    pub event: ReviewEvent,
+    pub review: SignalReview,
+}
+
+#[derive(Serialize)]
+pub struct HistoryView {
+    pub patient_id: String,
+    pub code: String,
+    /// newest first
+    pub history: Vec<ReviewEvent>,
 }
 
 #[derive(Serialize)]

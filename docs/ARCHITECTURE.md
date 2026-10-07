@@ -132,6 +132,30 @@ re-uploading a file reports duplicates instead of doubling the series.
 Store errors are logged and returned as a generic `internal` error — SQL
 text never reaches clients.
 
+## Review workflow (review.rs, routes/reviews.rs, migration 002)
+
+The app follows app #1's override-audit pattern. A clinician
+acknowledges, dismisses or reopens a watch/alert signal (dismiss and
+reopen need a reason) or adds a note. Each action is one row in
+`review_events`, which a trigger makes append-only.
+
+- **Identity.** A signal is `(patient, code, rule, t)`, where `t` is the
+  result it fired on. A review covers exactly that finding: the next
+  result raises a new, unreviewed signal, so a review never silences
+  future drift.
+- **State.** It is folded from the events: the latest acknowledge,
+  dismiss or reopen decides; notes are counted but don't change the
+  state.
+- **Integrity.** The client only names the signal. The server recomputes
+  the report with the same options, refuses a signal it no longer
+  computes (409), and stores its own snapshot: the signal, status,
+  latest result, baseline, options and engine version. Each audit row
+  therefore shows what the clinician saw. Reasons pass an identifier
+  screen (synthetic data only), and the actor is a pseudonym.
+- **Triage.** Patients are ordered by their worst *unreviewed* signal.
+  The computed status stays visible, so a reviewed alert moves down but
+  never disappears.
+
 ## Explain this drift (crates/api/src/llm, routes/explain*.rs)
 
 The pipeline is ported from app #1: one schema-constrained model call,

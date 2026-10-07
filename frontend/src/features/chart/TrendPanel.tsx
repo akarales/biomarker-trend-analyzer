@@ -1,5 +1,6 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { ReviewHistory } from '@/features/review';
 import { StatusChip } from '@/shared/components/StatusChip';
 import { displayUnit } from '@/shared/domain';
 import { showTrendPrompt, useAnalyzer } from '@/state';
@@ -13,6 +14,7 @@ import { TrendChart } from './TrendChart';
 export function TrendPanel() {
   const series = useAnalyzer((s) => s.series);
   const prompt = useAnalyzer(showTrendPrompt);
+  const submitReview = useAnalyzer((s) => s.submitReview);
   if (!series) {
     return prompt ? (
       <p className="rounded-lg border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
@@ -47,7 +49,8 @@ export function TrendPanel() {
             <DataTable series={series} label={`${name} results`} />
           </TabsContent>
         </Tabs>
-        <SignalList report={report} />
+        <SignalList report={report} reviews={series.reviews} onReview={submitReview} />
+        <ReviewHistory history={series.history} />
       </CardContent>
     </Card>
   );

@@ -1,4 +1,4 @@
-import { selectedEntry, useAnalyzer } from '@/state';
+import { selectedEntry, unreviewedCount, useAnalyzer } from '@/state';
 
 import { BiomarkerCard } from './BiomarkerCard';
 
@@ -8,6 +8,7 @@ export function BiomarkerCards() {
   const selectedCode = useAnalyzer((s) => s.selectedCode);
   const selectCode = useAnalyzer((s) => s.selectCode);
   const entry = useAnalyzer(selectedEntry);
+  const summaryReviews = useAnalyzer((s) => s.summaryReviews);
   if (reports.length === 0) return null;
 
   return (
@@ -22,6 +23,7 @@ export function BiomarkerCards() {
             report={report}
             selected={selectedCode === report.code}
             onSelect={(code) => void selectCode(code)}
+            unreviewed={unreviewedCount(report, summaryReviews[report.code])}
           />
         ))}
       </div>

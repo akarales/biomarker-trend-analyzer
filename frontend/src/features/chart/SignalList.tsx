@@ -1,16 +1,21 @@
-import type { DriftReport } from '@/api/schemas';
+import type { ReviewInput } from '@/api/reviews';
+import type { DriftReport, SignalReview } from '@/api/schemas';
+import { ReviewControls } from '@/features/review';
 import { StatusChip } from '@/shared/components/StatusChip';
 import { RULE_LABEL, SEVERITY_COLOR, formatDate } from '@/shared/domain';
 
 interface Props {
   report: DriftReport;
+  /** review status per signal (same order); review controls show when given with `onReview` */
+  reviews?: SignalReview[];
+  onReview?(input: ReviewInput): Promise<string | null>;
 }
 
 /**
  * Why the status is what it is: every signal with its explanation and
  * source, then what could not be assessed ("no signal" ≠ "healthy").
  */
-export function SignalList({ report }: Props) {
+export function SignalList({ report, reviews, onReview }: Props) {
   return (
     <section aria-label="Signals" className="flex flex-col gap-3">
       <h3 className="text-sm font-semibold">Why this status</h3>
@@ -33,6 +38,7 @@ export function SignalList({ report }: Props) {
               </p>
               <p className="mt-1.5">{s.explanation}</p>
               <p className="mt-1 text-xs text-muted-foreground">Source: {s.source}</p>
+              {onReview && s.severity !== 'info' && <ReviewControls signal={s} review={reviews?.[i]} onSubmit={onReview} />}
             </li>
           ))}
         </ul>

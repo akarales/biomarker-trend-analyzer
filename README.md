@@ -5,7 +5,7 @@
     <a href="https://github.com/akarales/biomarker-trend-analyzer/actions/workflows/ci.yml"><img src="https://github.com/akarales/biomarker-trend-analyzer/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
     <img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT">
     <img src="https://img.shields.io/badge/Rust-1.96-orange?logo=rust" alt="Rust 1.96">
-    <img src="https://img.shields.io/badge/tests-107%20rust%20%2B%2069%20web-success" alt="tests">
+    <img src="https://img.shields.io/badge/tests-118%20rust%20%2B%2077%20web-success" alt="tests">
     <img src="https://img.shields.io/badge/port-8003-blue" alt="port 8003">
   </p>
 </p>
@@ -54,6 +54,10 @@ hand-rolled SVG trend charts.
   change point, hover + keyboard readout, table alternative), as-of date
   and trend window in a shareable URL — dark shadcn theme, WCAG 2.2 AA
   checked with axe in every state
+- **Clinician review + audit** — acknowledge, dismiss (with a reason),
+  annotate or reopen each signal; append-only events (Postgres trigger)
+  with a server-computed snapshot of the signal at decision time; triage
+  orders patients by unreviewed signals while keeping the computed status
 - **Explain this drift** — a streamed AI draft for the reviewing clinician
   (offline stub, local Ollama or Claude), grounded in the computed signals:
   disclaimer from the first byte, Stop cancels the model call, and the
@@ -114,6 +118,7 @@ APP_STORE=postgres APP_DATABASE_URL=postgresql://app:app@127.0.0.1:5435/biomarke
 | `GET /api/v1/patients/{id}/biomarkers/{code}` | full series + report |
 | `POST /api/v1/explain/stream` · `POST /api/v1/explain` | grounded AI draft (NDJSON stream · JSON) |
 | `GET /api/v1/llm/models` | model chooser (stub, Ollama, Claude) |
+| `POST · GET /api/v1/patients/{id}/biomarkers/{code}/reviews` | review a signal · audit trail |
 
 curl + JSON examples: [docs/API.md](docs/API.md).
 
@@ -132,7 +137,7 @@ curl + JSON examples: [docs/API.md](docs/API.md).
 
 - [x] v1 — scaffold: drift math, ingestion, stores, API, charts, CI
 - [x] v2 — prRI/RCV drift engine, FHIR R4 + Synthea demo, clinician workspace, streamed explanations
-- [ ] v2 — clinician review workflow with an append-only audit (M6)
+- [x] v2 — clinician review workflow with an append-only audit
 - [ ] later — similar-patient trajectories (embeddings; deferred)
 
 </details>

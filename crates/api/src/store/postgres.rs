@@ -9,7 +9,7 @@ use chrono::{DateTime, Utc};
 use sqlx::PgPool;
 use sqlx::postgres::PgPoolOptions;
 
-use super::{InsertReport, PatientSummary, StoreError};
+use super::{InsertReport, NewReviewEvent, PatientSummary, ReviewAction, ReviewEvent, StoreError};
 
 pub struct PgStore {
     pool: PgPool,
@@ -136,5 +136,75 @@ impl PgStore {
         .await
         .map_err(db("patient_codes"))?;
         Ok(rows.into_iter().map(|r| r.code).collect())
+    }
+
+    /// INSERT only — the table's trigger rejects UPDATE/DELETE/TRUNCATE.
+    pub async fn append_review(&self, e: NewReviewEvent) -> Result<ReviewEvent, StoreError> {
+        let signal_t = DateTime::<Utc>::from_timestamp(e.signal_t, 0)
+            .ok_or_else(|| StoreError::Database("append_review: signal_t out of range".into()))?;
+        let row = sqlx::query!(
+            r#"INSERT INTO review_events (patient_id, code, rule, signal_t, action, reason, snapshot)
+               VALUES ($1, $2, $3, $4, $5, $6, $7)
+               RETURNING id, actor, created_at"#,
+            e.patient_id,
+            e.code,
+            e.rule,
+            signal_t,
+            e.action.as_str(),
+            e.reason,
+            e.snapshot,
+        )
+        .fetch_one(&self.pool)
+        .await
+        .map_err(db("append_review"))?;
+        Ok(ReviewEvent {
+            id: row.id,
+            patient_id: e.patient_id,
+            code: e.code,
+            rule: e.rule,
+            signal_t: e.signal_t,
+            action: e.action,
+            reason: e.reason,
+            actor: row.actor,
+            snapshot: e.snapshot,
+            created_at: row.created_at.timestamp(),
+        })
+    }
+
+    pub async fn reviews(
+        &self,
+        patient_id: &str,
+        code: Option<&str>,
+    ) -> Result<Vec<ReviewEvent>, StoreError> {
+        let rows = sqlx::query!(
+            r#"SELECT id, patient_id, code, rule, signal_t, action, reason, actor, snapshot, created_at
+               FROM review_events
+               WHERE patient_id = $1 AND ($2::text IS NULL OR code = $2)
+               ORDER BY id"#,
+            patient_id,
+            code,
+        )
+        .fetch_all(&self.pool)
+        .await
+        .map_err(db("reviews"))?;
+        rows.into_iter()
+            .map(|r| {
+                let action = ReviewAction::parse(&r.action).ok_or_else(|| {
+                    StoreError::Database(format!("reviews: unknown action {}", r.action))
+                })?;
+                Ok(ReviewEvent {
+                    id: r.id,
+                    patient_id: r.patient_id,
+                    code: r.code,
+                    rule: r.rule,
+                    signal_t: r.signal_t.timestamp(),
+                    action,
+                    reason: r.reason,
+                    actor: r.actor,
+                    snapshot: r.snapshot,
+                    created_at: r.created_at.timestamp(),
+                })
+            })
+            .collect()
     }
 }

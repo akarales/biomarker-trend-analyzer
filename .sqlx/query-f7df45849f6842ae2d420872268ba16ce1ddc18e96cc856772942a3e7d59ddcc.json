@@ -1,0 +1,58 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO review_events (patient_id, code, rule, signal_t, action, reason, snapshot)\n               VALUES ($1, $2, $3, $4, $5, $6, $7)\n               RETURNING id, actor, created_at",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "review_events",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "actor",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "review_events",
+            "name": "actor"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "created_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "review_events",
+            "name": "created_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text",
+        "Text",
+        "Timestamptz",
+        "Text",
+        "Text",
+        "Jsonb"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "f7df45849f6842ae2d420872268ba16ce1ddc18e96cc856772942a3e7d59ddcc"
+}

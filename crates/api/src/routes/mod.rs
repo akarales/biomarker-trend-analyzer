@@ -6,6 +6,7 @@ pub mod explain_stream;
 pub mod health;
 pub mod observations;
 pub mod patients;
+pub mod reviews;
 mod views;
 
 use axum::Router;
@@ -33,6 +34,10 @@ pub fn router(state: AppState) -> Router {
         .route(
             "/api/v1/patients/{patient_id}/biomarkers/{code}",
             get(biomarkers::series),
+        )
+        .route(
+            "/api/v1/patients/{patient_id}/biomarkers/{code}/reviews",
+            get(reviews::history).post(reviews::create),
         )
         .with_state(state)
         .layer(middleware::from_fn(request_id))

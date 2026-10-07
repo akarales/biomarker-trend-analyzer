@@ -17,7 +17,7 @@ use tower::ServiceExt;
 use biomarker_api::config::{Config, StoreBackend};
 use biomarker_api::routes;
 use biomarker_api::state::AppState;
-use biomarker_api::store::{Store, postgres::PgStore};
+use biomarker_api::store::{NewReviewEvent, ReviewAction, Store, postgres::PgStore};
 use biomarker_ingest::Observation;
 
 fn fixture() -> Vec<Observation> {
@@ -124,4 +124,91 @@ async fn api_summary_works_over_postgres(pool: PgPool) {
     let (status, body) = get(&app, "/api/v1/patients/ghost/summary").await;
     assert_eq!(status, StatusCode::NOT_FOUND);
     assert_eq!(body["code"], "not_found");
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn review_events_round_trip_and_are_append_only(pool: PgPool) {
+    let store = PgStore::from_pool(pool.clone());
+    let snapshot =
+        serde_json::json!({ "signal": { "rule": "prri", "severity": "alert" }, "status": "alert" });
+    let stored = store
+        .append_review(NewReviewEvent {
+            patient_id: "alice".into(),
+            code: "HBA1C".into(),
+            rule: "prri".into(),
+            signal_t: 1_790_000_000,
+            action: ReviewAction::Dismiss,
+            reason: Some("haemolysed sample, repeat normal".into()),
+            snapshot: snapshot.clone(),
+        })
+        .await
+        .expect("append");
+    assert_eq!(stored.actor, "demo-clinician");
+    let read = store.reviews("alice", Some("HBA1C")).await.expect("read");
+    assert_eq!(read, vec![stored.clone()]);
+    assert_eq!(read[0].snapshot, snapshot);
+    assert_eq!(read[0].signal_t, 1_790_000_000);
+    assert!(
+        store
+            .reviews("alice", Some("LDL"))
+            .await
+            .expect("read")
+            .is_empty()
+    );
+
+    for statement in [
+        "UPDATE review_events SET reason = 'edited later'",
+        "DELETE FROM review_events",
+        "TRUNCATE review_events",
+    ] {
+        let err = sqlx::query(statement)
+            .execute(&pool)
+            .await
+            .expect_err(statement);
+        assert!(
+            err.to_string().contains("append-only"),
+            "{statement}: {err}"
+        );
+    }
+    // the database itself refuses a dismissal without a reason
+    let err = sqlx::query(
+        "INSERT INTO review_events (patient_id, code, rule, signal_t, action, snapshot) \
+         VALUES ('alice', 'HBA1C', 'prri', now(), 'dismiss', '{}')",
+    )
+    .execute(&pool)
+    .await
+    .expect_err("reason required");
+    assert!(
+        err.to_string().contains("review_events_reason_required"),
+        "{err}"
+    );
+    assert_eq!(store.reviews("alice", None).await.expect("read").len(), 1);
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn api_review_works_over_postgres(pool: PgPool) {
+    let store = Store::Postgres(PgStore::from_pool(pool));
+    store.insert_observations(&fixture()).await.expect("seed");
+    let app = app(store);
+    let (_, series) = get(&app, "/api/v1/patients/alice/biomarkers/HBA1C").await;
+    let signal = &series["report"]["signals"][0];
+    let request = Request::post("/api/v1/patients/alice/biomarkers/HBA1C/reviews")
+        .header("content-type", "application/json")
+        .body(Body::from(
+            serde_json::json!({ "rule": signal["rule"], "t": signal["t"], "action": "acknowledge" }).to_string(),
+        ))
+        .expect("request");
+    let response = app.clone().oneshot(request).await.expect("request");
+    assert_eq!(response.status(), StatusCode::CREATED);
+    let (_, series) = get(&app, "/api/v1/patients/alice/biomarkers/HBA1C").await;
+    assert_eq!(series["reviews"][0]["state"], "acknowledged");
+    assert_eq!(series["history"][0]["snapshot"]["status"], "alert");
+    let (_, listing) = get(&app, "/api/v1/patients").await;
+    assert!(
+        listing["patients"]
+            .as_array()
+            .expect("patients")
+            .iter()
+            .all(|p| p["unreviewed"].is_u64())
+    );
 }

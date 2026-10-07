@@ -22,6 +22,9 @@ pub enum ApiError {
     /// message already reads "fhir error: …" (from biomarker-ingest)
     #[error("{0}")]
     Fhir(String),
+    /// the reviewed signal is not in the current analysis (stale view)
+    #[error("{0}")]
+    StaleSignal(String),
     /// model provider failed (details logged, generic message to the client)
     #[error("{0}")]
     LlmUpstream(String),
@@ -38,6 +41,7 @@ impl ApiError {
             ApiError::Csv(_) => "invalid_csv",
             ApiError::Fhir(_) => "invalid_fhir",
             ApiError::LlmUpstream(_) => "llm_upstream",
+            ApiError::StaleSignal(_) => "stale_signal",
             ApiError::Internal => "internal",
         }
     }
@@ -48,6 +52,7 @@ impl ApiError {
             ApiError::BadRequest(_) => StatusCode::BAD_REQUEST,
             ApiError::Csv(_) | ApiError::Fhir(_) => StatusCode::UNPROCESSABLE_ENTITY,
             ApiError::LlmUpstream(_) => StatusCode::BAD_GATEWAY,
+            ApiError::StaleSignal(_) => StatusCode::CONFLICT,
             ApiError::Internal => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }

@@ -1,4 +1,4 @@
-import type { BiomarkerSeries, DriftReport, PatientSummary, PatientSummaryEntry, PatientsResponse, Signal } from '@/api/schemas';
+import type { BiomarkerSeries, DriftReport, PatientSummary, PatientSummaryEntry, PatientsResponse, Signal, SignalReview } from '@/api/schemas';
 
 /** Synthetic API payloads (same shape as crates/drift/src/model.rs). */
 const T0 = Date.UTC(2026, 0, 1) / 1000;
@@ -72,6 +72,7 @@ export function entry(patientId: string, status: PatientSummaryEntry['status'] =
     status,
     alerts: status === 'alert' ? 1 : 0,
     watches: status === 'watch' ? 1 : 0,
+    unreviewed: status === 'normal' ? 0 : 1,
     top_signal:
       status === 'normal'
         ? null
@@ -85,6 +86,7 @@ export function summary(patientId: string): PatientSummary {
     as_of: null,
     window_days: 1095,
     reports: [report('HBA1C'), report('LDL', { unit: 'mg/dL' })],
+    reviews: {},
   };
 }
 
@@ -110,6 +112,8 @@ export function series(patientId: string, code: string): BiomarkerSeries {
       baseline: { n: 3, from: T0, to: T0 + 31 * DAY, set_point: 5.55, prri_low: 5.38, prri_high: 5.82, level: 0.95 },
       signals: [signal(), signal({ rule: 'threshold', explanation: 'Hemoglobin A1c 7.00 %: diabetes range (ADA ≥ 6.5 %).' })],
     }),
+    reviews: [unreviewed('prri', T0 + 59 * DAY), unreviewed('threshold', T0 + 59 * DAY)],
+    history: [],
   };
 }
 
@@ -120,4 +124,8 @@ export function deferred<T>() {
     resolve = r;
   });
   return { promise, resolve };
+}
+
+export function unreviewed(rule: SignalReview['rule'], t: number): SignalReview {
+  return { rule, t, state: 'unreviewed', decided_by: null, decided_at: null, reason: null, notes: 0 };
 }

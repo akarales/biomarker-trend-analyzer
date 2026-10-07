@@ -1,7 +1,7 @@
 import type { StateCreator } from 'zustand';
 
 import { fetchSeries } from '@/api/patients';
-import type { BiomarkerSeries, DriftReport } from '@/api/schemas';
+import type { BiomarkerSeries, DriftReport, SignalReview } from '@/api/schemas';
 
 import type { Store } from '../store';
 import { analysisOptions } from './view';
@@ -9,6 +9,8 @@ import { analysisOptions } from './view';
 export interface BiomarkerSlice {
   /** drift reports for the selected patient, one per biomarker */
   reports: DriftReport[];
+  /** review status per biomarker code (from the summary) */
+  summaryReviews: Record<string, SignalReview[]>;
   selectedCode: string | null;
   /** full series of the selected biomarker (chart data) */
   series: BiomarkerSeries | null;
@@ -22,6 +24,7 @@ let seriesRequest = 0;
 
 export const createBiomarkerSlice: StateCreator<Store, [], [], BiomarkerSlice> = (set, get) => ({
   reports: [],
+  summaryReviews: {},
   selectedCode: null,
   series: null,
 

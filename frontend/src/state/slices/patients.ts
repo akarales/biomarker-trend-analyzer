@@ -60,7 +60,7 @@ export const createPatientsSlice: StateCreator<Store, [], [], PatientsSlice> = (
       const summary = await fetchPatientSummary(patientId, analysisOptions(get()));
       if (request !== summaryRequest || get().selectedPatient !== patientId) return;
       const code = keepCode && summary.reports.some((r) => r.code === keepCode) ? keepCode : null;
-      set({ reports: summary.reports, ...(code ? {} : { selectedCode: null, series: null }) });
+      set({ reports: summary.reports, summaryReviews: summary.reviews, ...(code ? {} : { selectedCode: null, series: null }) });
       if (code) await get().selectCode(code, true);
     } catch (err) {
       set({ error: String(err) });

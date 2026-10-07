@@ -6,6 +6,7 @@ use axum::extract::{Path, Query, State};
 use super::views::{ObservationView, SeriesView};
 use crate::analysis::{self, AnalysisParams};
 use crate::error::ApiError;
+use crate::review;
 use crate::state::AppState;
 
 pub async fn series(
@@ -19,8 +20,11 @@ pub async fn series(
     let report = analysis::report(&series, &code, options)
         .ok_or_else(|| ApiError::NotFound(format!("no observations for {patient_id} / {code}")))?;
 
+    let events = state.store.reviews(&patient_id, Some(&code)).await?;
     Ok(Json(SeriesView {
         observations: series.iter().map(ObservationView::from).collect(),
+        reviews: review::report_reviews(&report, &events),
+        history: events.into_iter().rev().collect(),
         patient_id,
         code,
         report,

@@ -5,7 +5,7 @@ use std::sync::Mutex;
 
 use biomarker_ingest::Observation;
 
-use super::{InsertReport, PatientSummary, StoreError};
+use super::{DEMO_ACTOR, InsertReport, NewReviewEvent, PatientSummary, ReviewEvent, StoreError};
 
 #[derive(Default)]
 struct Inner {
@@ -13,6 +13,8 @@ struct Inner {
     series: BTreeMap<(String, String), Vec<Observation>>,
     // patient -> biomarker codes seen (dedup on insert)
     patients: BTreeMap<String, Vec<String>>,
+    // append-only, in insertion (id) order — no method mutates or removes
+    reviews: Vec<ReviewEvent>,
 }
 
 #[derive(Default)]
@@ -21,6 +23,39 @@ pub struct MemoryStore {
 }
 
 impl MemoryStore {
+    /// Append-only like the Postgres trigger: there is no update or delete.
+    pub fn append_review(&self, event: NewReviewEvent) -> Result<ReviewEvent, StoreError> {
+        let mut guard = self.lock();
+        let stored = ReviewEvent {
+            id: guard.reviews.len() as i64 + 1,
+            patient_id: event.patient_id,
+            code: event.code,
+            rule: event.rule,
+            signal_t: event.signal_t,
+            action: event.action,
+            reason: event.reason,
+            actor: DEMO_ACTOR.to_string(),
+            snapshot: event.snapshot,
+            created_at: chrono::Utc::now().timestamp(),
+        };
+        guard.reviews.push(stored.clone());
+        Ok(stored)
+    }
+
+    pub fn reviews(
+        &self,
+        patient_id: &str,
+        code: Option<&str>,
+    ) -> Result<Vec<ReviewEvent>, StoreError> {
+        Ok(self
+            .lock()
+            .reviews
+            .iter()
+            .filter(|e| e.patient_id == patient_id && code.is_none_or(|c| e.code == c))
+            .cloned()
+            .collect())
+    }
+
     fn lock(&self) -> std::sync::MutexGuard<'_, Inner> {
         self.inner.lock().expect("store lock poisoned")
     }

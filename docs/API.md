@@ -63,14 +63,21 @@ curl 'localhost:8003/api/v1/patients?as_of=2026-09-30'
 ```
 
 Every patient is analysed with the same options (analysis parameters
-below) and the list is sorted **worst first**: status, then the number of
-alerting biomarkers, then watch biomarkers, then id. `top_signal` is the
-most severe non-info signal; it is `null` when no rule fired.
+below) and the list is sorted by what still needs a clinician:
+
+1. the worst **unreviewed** watch/alert signal;
+2. the number of unreviewed signals;
+3. the computed status;
+4. alerting biomarkers, then watch biomarkers, then id.
+
+`status` is always the computed status; reviewing never hides a finding.
+`top_signal` is the most severe unreviewed signal, `null` when there is
+nothing left to review.
 
 ```json
 { "as_of": 1790812799, "window_days": 1095, "patients": [ {
   "patient_id": "SYN-01", "biomarkers": 3, "observations": 31,
-  "status": "alert", "alerts": 3, "watches": 0,
+  "status": "alert", "alerts": 3, "watches": 0, "unreviewed": 10,
   "top_signal": { "code": "CREAT", "display": "Creatinine (serum/plasma)", "rule": "prri",
                   "severity": "alert", "explanation": "Creatinine (serum/plasma) 0.70 mg/dL is below …" }
 }, … ] }
@@ -151,6 +158,44 @@ curl 'localhost:8003/api/v1/patients/alice/biomarkers/HBA1C?as_of=2026-08-31'
 same `report`; the chart draws `report.points`, the prRI band from
 `report.baseline`.
 
+## Review signals (append-only audit)
+
+```bash
+curl -X POST localhost:8003/api/v1/patients/EDGE-01/biomarkers/TSH/reviews \
+  -H 'content-type: application/json' \
+  -d '{"rule":"shift","t":1789374600,"action":"dismiss","reason":"known missed doses; adherence discussed"}'
+```
+
+- **Naming a signal:** a signal is identified by `rule` plus `t` (the
+  result it fired on). A new result raises a new, unreviewed signal.
+- **Actions:**
+  - `acknowledge` (reason optional);
+  - `annotate` (a note; does not change the state);
+  - `dismiss` (reason required);
+  - `reopen` (reason required; back to unreviewed).
+- **Reasons:** 3–500 characters. Text that looks like an identifier
+  (MRN, phone number, email, long ID numbers) is refused with `400`.
+- **Server-side recheck:** the server recomputes the analysis with the
+  sent `as_of` and `window_days`. If that signal no longer exists it
+  answers `409 stale_signal`. Otherwise it stores **its own snapshot** of
+  the signal at decision time (signal, status, latest result, baseline,
+  options, engine version) together with the pseudonymous actor
+  `demo-clinician`.
+- **Response:** `201 {event, review}`.
+
+`GET …/reviews` returns `{patient_id, code, history}`, newest first.
+Events are append-only: in Postgres, a trigger rejects UPDATE, DELETE and
+TRUNCATE.
+
+Review state comes back with the analyses:
+- the series response has `reviews` (aligned with `report.signals`:
+  `{rule, t, state, decided_by, decided_at, reason, notes}`) and
+  `history`;
+- the summary has `reviews` keyed by biomarker code.
+
+`state` is the latest acknowledge/dismiss/reopen decision: `unreviewed`,
+`acknowledged` or `dismissed`.
+
 ## Explain this drift (LLM draft)
 
 `POST /api/v1/explain/stream` streams NDJSON; `POST /api/v1/explain`
@@ -201,6 +246,7 @@ is on the server's log lines for that request.
 |--------|--------|---------|
 | `400` | `bad_request` | valid header but zero data rows ("no observations") |
 | `404` | `not_found` | unknown patient / biomarker |
+| `409` | `stale_signal` | the reviewed signal is not in the current analysis (reload) |
 | `422` | `invalid_fhir` | not JSON, or not a Bundle/Observation |
 | `422` | `invalid_csv` | schema mismatch (header), bad value, bad date (all name the row and column) |
 | `502` | `llm_upstream` | model provider failed (details only in the server log) |

@@ -11,7 +11,7 @@ Build, test, and verification commands for the Biomarker Trend Analyzer.
 
 ```bash
 cargo run -p biomarker-api          # serve :8003 (memory store, demo-seeded)
-cargo test --workspace -q           # 107 tests (drift, ingest incl. FHIR, api incl. demo data), no infra
+cargo test --workspace -q           # 118 tests (drift, ingest incl. FHIR, api incl. demo data), no infra
 cargo clippy --workspace --all-targets -- -D warnings   # must be clean
 cargo fmt --check
 cargo audit                         # accepted advisories + reasons: .cargo/audit.toml
@@ -72,14 +72,14 @@ axe `aria-hidden-focus`).
 ```
 frontend/src/
   app/        shell only: App (layout), AppHeader, useUrlSync (?patient=&code=&as_of=&window=)
-  features/   patients (triage) · biomarker (cards) · chart · controls (as-of, window) · upload · explain
+  features/   patients (triage) · biomarker (cards) · chart · controls (as-of, window) · upload · explain · review
               — each exposes index.ts; other features import ONLY that
   shared/     domain (status, tokens, format), components (StatusChip, ErrorBanner), hooks
-  state/      zustand store composed from slices/{patients,biomarker,upload,view}.ts
+  state/      zustand store composed from slices/{patients,biomarker,upload,view,review}.ts
               + selectors.ts + url.ts; import from @/state
   api/        http (zod/mini-validated) + patients.ts / observations.ts + schemas.ts
   components/ui/  shadcn registry (CLI-owned)
-crates/api/src/  routes/{patients,biomarkers,observations,health,explain,explain_stream}.rs + views.rs, llm/, explain.rs,
+crates/api/src/  routes/{patients,biomarkers,observations,health,explain,explain_stream,reviews}.rs + views.rs, llm/, explain.rs, review.rs, validate.rs,
                  analysis.rs (only caller of drift::analyze), triage.rs, import.rs, store/, error.rs
 ```
 
@@ -102,6 +102,22 @@ Rules (`src/test/architecture.test.ts` fails the build on them):
 - every new module gets a test; API responses get a zod schema
 - Rust: JSON shaping lives in `routes/views.rs`; handlers use `?`
   (`From<StoreError> for ApiError`)
+
+## Review workflow (append-only audit)
+
+- `review_events` (migration 002) is append-only: a trigger rejects
+  UPDATE/DELETE/TRUNCATE. Never work around it. Withdrawals are new
+  `reopen` events. MemoryStore has no mutate/remove method either.
+- A signal = `(patient, code, rule, t)`. Snapshots are built server-side
+  (`review::snapshot`) from the recomputed report; never accept one from
+  the client. A missing signal is `409 stale_signal`.
+- Reasons go through `validate::reason` (3–500 chars, identifier screen).
+  The actor is the pseudonym `demo-clinician`.
+- Triage = worst UNREVIEWED signal first. `status` stays the computed one;
+  a review must never hide a finding.
+- After changing a query: `sqlx migrate run --source crates/api/migrations`
+  against the compose db, then `cargo sqlx prepare --workspace -- --all-targets
+  --features biomarker-api/pg-tests`, and commit `.sqlx/`.
 
 ## LLM ("explain this drift")
 

@@ -11,7 +11,9 @@ interface Props {
 }
 
 function counts(p: PatientSummaryEntry): string {
-  const parts = [];
+  const parts: string[] = [];
+  if (p.unreviewed) parts.push(`${p.unreviewed} unreviewed`);
+  else if (p.alerts || p.watches) parts.push('all reviewed');
   if (p.alerts) parts.push(`${p.alerts} alert`);
   if (p.watches) parts.push(`${p.watches} watch`);
   return parts.length ? parts.join(' · ') : 'no rule fired';

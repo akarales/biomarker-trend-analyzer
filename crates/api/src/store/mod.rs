@@ -1,6 +1,7 @@
 //! Store abstraction (the ZAP_RUNTIME `store/mod.rs` pattern):
 //! `Memory` for tests and quick demos, `Postgres` (sqlx) for runtime.
-//! Enum dispatch — no dyn-async plumbing.
+//! Enum dispatch — no dyn-async plumbing. Holds lab results and the
+//! append-only review audit trail.
 
 pub mod memory;
 pub mod postgres;
@@ -77,6 +78,26 @@ impl Store {
         }
     }
 
+    /// Append one review event (never updated or deleted).
+    pub async fn append_review(&self, event: NewReviewEvent) -> Result<ReviewEvent, StoreError> {
+        match self {
+            Store::Memory(store) => store.append_review(event),
+            Store::Postgres(store) => store.append_review(event).await,
+        }
+    }
+
+    /// Review events of a patient (optionally one biomarker), oldest first.
+    pub async fn reviews(
+        &self,
+        patient_id: &str,
+        code: Option<&str>,
+    ) -> Result<Vec<ReviewEvent>, StoreError> {
+        match self {
+            Store::Memory(store) => store.reviews(patient_id, code),
+            Store::Postgres(store) => store.reviews(patient_id, code).await,
+        }
+    }
+
     /// Distinct biomarker codes observed for a patient.
     pub async fn patient_codes(&self, patient_id: &str) -> Result<Vec<String>, StoreError> {
         match self {
@@ -109,6 +130,74 @@ pub struct PatientSummary {
     pub patient_id: String,
     pub biomarkers: usize,
     pub observations: usize,
+}
+
+/// What a clinician did with a signal.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ReviewAction {
+    /// seen and accepted as a real finding (reason optional)
+    Acknowledge,
+    /// a note; does not change the review state (reason = the note)
+    Annotate,
+    /// not clinically relevant / not actionable (reason required)
+    Dismiss,
+    /// back to unreviewed (reason required)
+    Reopen,
+}
+
+impl ReviewAction {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            ReviewAction::Acknowledge => "acknowledge",
+            ReviewAction::Annotate => "annotate",
+            ReviewAction::Dismiss => "dismiss",
+            ReviewAction::Reopen => "reopen",
+        }
+    }
+
+    pub fn parse(s: &str) -> Option<Self> {
+        [
+            Self::Acknowledge,
+            Self::Annotate,
+            Self::Dismiss,
+            Self::Reopen,
+        ]
+        .into_iter()
+        .find(|a| a.as_str() == s)
+    }
+}
+
+/// The pseudonymous actor of every review (no login in this demo).
+pub const DEMO_ACTOR: &str = "demo-clinician";
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct NewReviewEvent {
+    pub patient_id: String,
+    pub code: String,
+    /// drift rule (`prri`, `rcv`, …)
+    pub rule: String,
+    /// epoch seconds of the result the signal fired on
+    pub signal_t: i64,
+    pub action: ReviewAction,
+    pub reason: Option<String>,
+    /// the signal + context as computed server-side at decision time
+    pub snapshot: serde_json::Value,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+pub struct ReviewEvent {
+    pub id: i64,
+    pub patient_id: String,
+    pub code: String,
+    pub rule: String,
+    pub signal_t: i64,
+    pub action: ReviewAction,
+    pub reason: Option<String>,
+    pub actor: String,
+    pub snapshot: serde_json::Value,
+    /// epoch seconds
+    pub created_at: i64,
 }
 
 /// Shared handle for AppState.

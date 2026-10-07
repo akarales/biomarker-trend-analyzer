@@ -103,6 +103,41 @@ export const DriftReportSchema = z.object({
 });
 export type DriftReport = z.infer<typeof DriftReportSchema>;
 
+export const REVIEW_STATES = ['unreviewed', 'acknowledged', 'dismissed'] as const;
+export type ReviewState = (typeof REVIEW_STATES)[number];
+export const REVIEW_ACTIONS = ['acknowledge', 'annotate', 'dismiss', 'reopen'] as const;
+export type ReviewAction = (typeof REVIEW_ACTIONS)[number];
+
+/** Review status of one signal (crates/api/src/review.rs), aligned with `report.signals`. */
+export const SignalReviewSchema = z.object({
+  rule: z.enum(RULES),
+  t: z.number(),
+  state: z.enum(REVIEW_STATES),
+  decided_by: z.nullable(z.string()),
+  decided_at: z.nullable(z.number()),
+  reason: z.nullable(z.string()),
+  notes: z.number(),
+});
+export type SignalReview = z.infer<typeof SignalReviewSchema>;
+
+/** One append-only audit event, with the server's snapshot at decision time. */
+export const ReviewEventSchema = z.object({
+  id: z.number(),
+  patient_id: z.string(),
+  code: z.string(),
+  rule: z.enum(RULES),
+  signal_t: z.number(),
+  action: z.enum(REVIEW_ACTIONS),
+  reason: z.nullable(z.string()),
+  actor: z.string(),
+  snapshot: z.object({ status: z.enum(STATUSES), signal: SignalSchema }),
+  created_at: z.number(),
+});
+export type ReviewEvent = z.infer<typeof ReviewEventSchema>;
+
+export const ReviewCreatedSchema = z.object({ event: ReviewEventSchema, review: SignalReviewSchema });
+export type ReviewCreated = z.infer<typeof ReviewCreatedSchema>;
+
 /** A triage listing row (crates/api/src/triage.rs), worst first. */
 export const PatientSummaryEntrySchema = z.object({
   patient_id: z.string(),
@@ -112,6 +147,9 @@ export const PatientSummaryEntrySchema = z.object({
   /** biomarkers whose status is alert / watch */
   alerts: z.number(),
   watches: z.number(),
+  /** watch/alert signals not yet acknowledged or dismissed */
+  unreviewed: z.number(),
+  /** the most severe UNREVIEWED signal */
   top_signal: z.nullable(
     z.object({
       code: z.string(),
@@ -137,6 +175,8 @@ export const PatientSummarySchema = z.object({
   as_of: z.nullable(z.number()),
   window_days: z.number(),
   reports: z.array(DriftReportSchema),
+  /** review status per biomarker code, aligned with each report's signals */
+  reviews: z.record(z.string(), z.array(SignalReviewSchema)),
 });
 export type PatientSummary = z.infer<typeof PatientSummarySchema>;
 
@@ -145,6 +185,10 @@ export const BiomarkerSeriesSchema = z.object({
   code: z.string(),
   observations: z.array(ObservationSchema),
   report: DriftReportSchema,
+  /** review status of each signal (same order as report.signals) */
+  reviews: z.array(SignalReviewSchema),
+  /** audit trail, newest first */
+  history: z.array(ReviewEventSchema),
 });
 export type BiomarkerSeries = z.infer<typeof BiomarkerSeriesSchema>;
 

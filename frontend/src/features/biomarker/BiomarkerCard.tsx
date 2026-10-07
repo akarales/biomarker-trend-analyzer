@@ -17,6 +17,8 @@ interface Props {
   report: DriftReport;
   selected: boolean;
   onSelect(code: string): void;
+  /** watch/alert signals still awaiting review */
+  unreviewed?: number;
 }
 
 function Row({ label, value }: { label: string; value: string }) {
@@ -29,7 +31,7 @@ function Row({ label, value }: { label: string; value: string }) {
 }
 
 /** One biomarker: latest result, personal vs population range, trend and the rule behind the status. */
-export function BiomarkerCard({ report, selected, onSelect }: Props) {
+export function BiomarkerCard({ report, selected, onSelect, unreviewed = 0 }: Props) {
   const top = report.signals.find((s) => s.severity !== 'info');
   const unit = report.unit;
   const trend = report.trend;
@@ -64,6 +66,11 @@ export function BiomarkerCard({ report, selected, onSelect }: Props) {
         />
       </dl>
       <span className="text-xs">{top ? `Why: ${RULE_LABEL[top.rule]}` : 'No rule fired'}</span>
+      {top && (
+        <span className={unreviewed ? 'text-xs font-semibold' : 'text-xs text-muted-foreground'}>
+          {unreviewed ? `${unreviewed} unreviewed` : 'All signals reviewed'}
+        </span>
+      )}
     </button>
   );
 }
